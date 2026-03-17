@@ -60,8 +60,8 @@ Test only calls logging/printing functions but has no assertion calls. Extremely
 
 Recognized log patterns:
 - `t.Log`, `t.Logf`
-- `fmt.Print`, `fmt.Printf`, `fmt.Println`
-- `log.Print`, `log.Printf`, `log.Println`
+- `fmt.Print`, `fmt.Printf`, `fmt.Println`, `fmt.Fprint`, `fmt.Fprintf`, `fmt.Fprintln`, `fmt.Sprint`, `fmt.Sprintf`, `fmt.Sprintln`
+- `log.Print`, `log.Printf`, `log.Println`, `log.Fatal`, `log.Fatalf`, `log.Fatalln`
 
 ```go
 // DETECTED: only logs
@@ -93,7 +93,7 @@ Detected patterns:
 - `assert.True(t, true)`
 - `assert.False(t, false)`
 - `assert.Nil(t, nil)`
-- `assert.Equal(t, 1, 1)` (same literal on both sides)
+- `assert.Equal(t, 1, 1)` / `assert.Exactly(t, 1, 1)` (same literal on both sides)
 - `assert.Equal(t, "hello", "hello")`
 - `assert.NotNil(t, "literal")` (non-nil literal)
 - `assert.NotEqual(t, 1, 2)` (both sides are literals)
@@ -139,10 +139,11 @@ func TestSave(t *testing.T) {
     // test continues without checking error
 }
 
-// DETECTED: error return value completely ignored
+// DETECTED: error var never checked in assertions
 func TestSave(t *testing.T) {
-    repo.Save(entity)
-    // Save returns (Entity, error) but both are dropped
+    result, err := repo.Save(entity)
+    _ = err
+    assert.NotNil(t, result)
 }
 
 // NOT detected: error is checked
@@ -203,19 +204,19 @@ func TestGetUser(t *testing.T) {
 
 **Status:** ✅ Implemented
 
-Function under test is called with only zero-values (`nil`, `0`, `""`, `false`, empty struct) as arguments, suggesting no meaningful test scenario was devised.
+Function under test is called with only zero-values (`nil`, `0`, `""`, `false`, empty struct) as arguments, suggesting no meaningful test scenario was devised. Only detects calls to same-package functions (no receiver).
 
 ```go
-// DETECTED: all zero-value arguments
+// DETECTED: all zero-value arguments to local function
 func TestCreateUser(t *testing.T) {
-    user, err := service.CreateUser("", 0, false)
+    user, err := CreateUser("", 0, false)
     assert.NoError(t, err)
     assert.NotNil(t, user)
 }
 
 // NOT detected: meaningful inputs
 func TestCreateUser(t *testing.T) {
-    user, err := service.CreateUser("Alice", 30, true)
+    user, err := CreateUser("Alice", 30, true)
     assert.NoError(t, err)
     assert.Equal(t, "Alice", user.Name)
 }
@@ -229,13 +230,19 @@ func TestCreateUser(t *testing.T) {
 
 **Status:** ✅ Implemented
 
-Assertion compares a variable to itself, which is always true.
+Assertion compares a variable to itself, which is always true. Applies to `assert.Equal`, `assert.Exactly`, `assert.Same`, and their `require.*` equivalents.
 
 ```go
 // DETECTED: comparing variable to itself
 func TestSelfCompare(t *testing.T) {
     result := Compute()
     assert.Equal(t, result, result)
+}
+
+// DETECTED: Same with identical arguments
+func TestSamePointer(t *testing.T) {
+    obj := NewObj()
+    assert.Same(t, obj, obj)
 }
 ```
 
@@ -245,7 +252,7 @@ func TestSelfCompare(t *testing.T) {
 
 **Status:** ✅ Implemented
 
-Assertion appears after `t.Fatal`, `t.FailNow`, or `return` — it can never be reached.
+Assertion appears after `t.Fatal`, `t.Fatalf`, `t.FailNow`, or `return` — it can never be reached.
 
 ```go
 // DETECTED: assertion after t.Fatal is unreachable
@@ -265,7 +272,7 @@ func TestUnreachable(t *testing.T) {
 
 **Status:** ✅ Implemented
 
-Test has assertions but no meaningful setup — calls the function under test with only zero-value or nil arguments and no prior arrangement.
+Test has no meaningful setup — calls the function under test with only zero-value or nil arguments and no prior arrangement.
 
 ```go
 // DETECTED: no arrange phase, nil arguments
