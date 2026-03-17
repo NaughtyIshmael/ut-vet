@@ -127,13 +127,15 @@ func ParseRustTestFile(path string, src []byte) ([]*rules.TestFunc, error) {
 		}
 
 		fnName := fnMatch[1]
-		fnLine := attrStart + 1 // 1-based line number
+		fnLine := attrStart + 1 // 1-based line number of #[test] attribute
 
 		// Extract function body by counting braces
 		bodyLines, endIdx := extractRustFnBody(lines, i)
+		// bodyStartLine is the 1-based line number of the first body line
+		bodyStartLine := i + 2 // fn decl is at index i, body starts after {
 		i = endIdx + 1
 
-		tf := buildRustTestFunc(fnName, fnLine, bodyLines, hasShouldPanic)
+		tf := buildRustTestFunc(fnName, fnLine, bodyLines, bodyStartLine, hasShouldPanic)
 		testFuncs = append(testFuncs, tf)
 	}
 
@@ -141,6 +143,7 @@ func ParseRustTestFile(path string, src []byte) ([]*rules.TestFunc, error) {
 }
 
 // extractRustFnBody extracts the body of a Rust function by counting braces.
+// Skips braces inside string literals and comments.
 // Returns the body lines (between outer braces) and the index of the closing brace.
 func extractRustFnBody(lines []string, fnDeclLine int) ([]string, int) {
 	braceCount := 0
@@ -150,7 +153,37 @@ func extractRustFnBody(lines []string, fnDeclLine int) ([]string, int) {
 
 	for i := fnDeclLine; i < len(lines); i++ {
 		line := lines[i]
-		for _, ch := range line {
+		inString := false
+		escaped := false
+
+		for j := 0; j < len(line); j++ {
+			ch := line[j]
+
+			if escaped {
+				escaped = false
+				continue
+			}
+
+			if ch == '\\' && inString {
+				escaped = true
+				continue
+			}
+
+			// Toggle string context on unescaped quote
+			if ch == '"' {
+				inString = !inString
+				continue
+			}
+
+			// Skip line comments
+			if !inString && ch == '/' && j+1 < len(line) && line[j+1] == '/' {
+				break // rest of line is a comment
+			}
+
+			if inString {
+				continue
+			}
+
 			if ch == '{' {
 				if !started {
 					started = true
@@ -160,11 +193,9 @@ func extractRustFnBody(lines []string, fnDeclLine int) ([]string, int) {
 			} else if ch == '}' {
 				braceCount--
 				if started && braceCount == 0 {
-					// Collect lines between opening and closing brace
 					if bodyStart >= 0 && i > bodyStart {
 						bodyLines = lines[bodyStart+1 : i]
 					} else if bodyStart == i {
-						// Single-line fn: fn test() {}
 						bodyLines = nil
 					}
 					return bodyLines, i
@@ -173,7 +204,6 @@ func extractRustFnBody(lines []string, fnDeclLine int) ([]string, int) {
 		}
 	}
 
-	// Unclosed brace — return what we have
 	if bodyStart >= 0 && bodyStart+1 < len(lines) {
 		return lines[bodyStart+1:], len(lines) - 1
 	}
@@ -181,7 +211,7 @@ func extractRustFnBody(lines []string, fnDeclLine int) ([]string, int) {
 }
 
 // buildRustTestFunc constructs a TestFunc from parsed Rust function body.
-func buildRustTestFunc(name string, line int, bodyLines []string, hasShouldPanic bool) *rules.TestFunc {
+func buildRustTestFunc(name string, line int, bodyLines []string, bodyStartLine int, hasShouldPanic bool) *rules.TestFunc {
 	tf := &rules.TestFunc{
 		Name:             name,
 		Line:             line,
@@ -190,20 +220,20 @@ func buildRustTestFunc(name string, line int, bodyLines []string, hasShouldPanic
 		ErrorVarsChecked: make(map[string]bool),
 	}
 
-	// Count non-comment, non-empty lines
-	var nonCommentLines []string
-	for _, bl := range bodyLines {
+	// Build filtered lines with their original line numbers
+	var codeLines []numberedLine
+	for i, bl := range bodyLines {
 		trimmed := strings.TrimSpace(bl)
 		if trimmed == "" || commentRe.MatchString(bl) {
 			continue
 		}
-		nonCommentLines = append(nonCommentLines, bl)
+		codeLines = append(codeLines, numberedLine{text: bl, lineNum: bodyStartLine + i})
 	}
 
-	tf.BodyLength = len(nonCommentLines)
+	tf.BodyLength = len(codeLines)
 	tf.HasBody = tf.BodyLength > 0
 
-	// Build body statements
+	// Build body statements with correct line numbers
 	for i, bl := range bodyLines {
 		trimmed := strings.TrimSpace(bl)
 		kind := rules.StmtOther
@@ -213,27 +243,29 @@ func buildRustTestFunc(name string, line int, bodyLines []string, hasShouldPanic
 			continue
 		}
 		tf.Body = append(tf.Body, rules.Statement{
-			Line:    line + i + 1,
+			Line:    bodyStartLine + i,
 			Kind:    kind,
 			Content: trimmed,
 		})
 	}
 
-	// Extract call expressions from body
-	fullBody := strings.Join(bodyLines, "\n")
-	tf.CallExprs = extractRustCallExprs(nonCommentLines, line)
+	// Join multi-line macro calls before extracting call expressions
+	joinedLines := joinMultiLineMacros(codeLines)
 
-	// Extract local function calls
+	tf.CallExprs = extractRustCallExprs(joinedLines)
+
+	// Extract local function calls (excluding assertion/log macros and well-known stdlib)
 	for _, ce := range tf.CallExprs {
 		if ce.Receiver == "" && !rustAssertMacros[ce.Function] && !rustLogMacros[ce.Function] {
-			// Strip trailing ! for macro-style local calls
 			funcName := strings.TrimSuffix(ce.Function, "!")
-			tf.LocalFuncCalls = append(tf.LocalFuncCalls, funcName)
+			if funcName != "" {
+				tf.LocalFuncCalls = append(tf.LocalFuncCalls, funcName)
+			}
 		}
 	}
 
-	// Extract assignments
-	extractRustAssignments(nonCommentLines, line, tf)
+	// Extract assignments with correct line numbers
+	extractRustAssignments(joinedLines, tf)
 
 	// If #[should_panic], inject a synthetic assertion call
 	if hasShouldPanic {
@@ -245,41 +277,121 @@ func buildRustTestFunc(name string, line int, bodyLines []string, hasShouldPanic
 		})
 	}
 
-	// Extract terminating statements (panic!, return, unreachable!)
-	for i, bl := range nonCommentLines {
-		trimmed := strings.TrimSpace(bl)
-		stmtLine := line + i + 1
+	// Extract terminating statements at top-level only (brace depth 0)
+	braceDepth := 0
+	for _, cl := range codeLines {
+		trimmed := strings.TrimSpace(cl.text)
+		// Track brace depth to avoid flagging returns inside if/match
+		for _, ch := range trimmed {
+			if ch == '{' {
+				braceDepth++
+			} else if ch == '}' {
+				braceDepth--
+			}
+		}
+		if braceDepth > 0 {
+			continue
+		}
 		if strings.HasPrefix(trimmed, "panic!") || strings.HasPrefix(trimmed, "unreachable!") {
 			tf.TerminatingStatements = append(tf.TerminatingStatements, rules.TerminatingStatement{
-				Line: stmtLine,
+				Line: cl.lineNum,
 				Kind: "panic!",
 			})
 		} else if strings.HasPrefix(trimmed, "return") {
 			tf.TerminatingStatements = append(tf.TerminatingStatements, rules.TerminatingStatement{
-				Line: stmtLine,
+				Line: cl.lineNum,
 				Kind: "return",
 			})
 		}
 	}
 
-	_ = fullBody
 	return tf
 }
 
+// numberedLine pairs a line of text with its original file line number.
+type numberedLine struct {
+	text    string
+	lineNum int
+}
+
+// joinMultiLineMacros joins consecutive lines when a macro call's parentheses
+// are not closed on a single line.
+func joinMultiLineMacros(lines []numberedLine) []numberedLine {
+	var result []numberedLine
+	i := 0
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i].text)
+		// Check if this line has an unclosed paren from a macro/function call
+		depth := countParenDepth(trimmed)
+		if depth <= 0 {
+			result = append(result, lines[i])
+			i++
+			continue
+		}
+		// Join subsequent lines until parens are balanced
+		joined := trimmed
+		lineNum := lines[i].lineNum
+		i++
+		for i < len(lines) && depth > 0 {
+			nextTrimmed := strings.TrimSpace(lines[i].text)
+			joined += " " + nextTrimmed
+			depth += countParenDepth(nextTrimmed)
+			i++
+		}
+		result = append(result, numberedLine{text: joined, lineNum: lineNum})
+	}
+	return result
+}
+
+// countParenDepth returns the net paren depth change for a line,
+// ignoring parens inside string literals.
+func countParenDepth(s string) int {
+	depth := 0
+	inString := false
+	escaped := false
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		if ch == '/' && i+1 < len(s) && s[i+1] == '/' {
+			break
+		}
+		if ch == '(' {
+			depth++
+		} else if ch == ')' {
+			depth--
+		}
+	}
+	return depth
+}
+
 // extractRustCallExprs extracts macro and function calls from Rust source lines.
-func extractRustCallExprs(lines []string, baseLine int) []rules.CallExpr {
+func extractRustCallExprs(lines []numberedLine) []rules.CallExpr {
 	var calls []rules.CallExpr
 	seen := make(map[string]bool)
 
-	for i, line := range lines {
-		lineNum := baseLine + i + 1
-		trimmed := strings.TrimSpace(line)
+	for _, nl := range lines {
+		lineNum := nl.lineNum
+		trimmed := strings.TrimSpace(nl.text)
 
 		// Find macro calls (assert!, println!, etc.)
 		macroMatches := macroCallRe.FindAllStringSubmatchIndex(trimmed, -1)
 		for _, loc := range macroMatches {
 			macroName := trimmed[loc[2]:loc[3]]
-			argsStart := loc[1] // position after the opening paren (end of full match)
+			argsStart := loc[1]
 
 			args := extractRustMacroArgs(trimmed, argsStart)
 			ce := rules.CallExpr{
@@ -295,17 +407,16 @@ func extractRustCallExprs(lines []string, baseLine int) []rules.CallExpr {
 			}
 		}
 
-		// Find method calls: .method(args) — extract receiver from context
+		// Find method calls: .method(args)
 		methodMatchIndices := methodCallRe.FindAllStringSubmatchIndex(trimmed, -1)
 		for _, loc := range methodMatchIndices {
 			methodName := trimmed[loc[2]:loc[3]]
 			if strings.Contains(methodName, "!") {
 				continue
 			}
-			// Extract receiver: text before the dot
 			dotPos := loc[0]
 			receiver := extractRustReceiver(trimmed, dotPos)
-			argsStart := loc[1] // after opening paren
+			argsStart := loc[1]
 			args := extractRustMacroArgs(trimmed, argsStart)
 			ce := rules.CallExpr{
 				Line:     lineNum,
@@ -329,11 +440,10 @@ func extractRustCallExprs(lines []string, baseLine int) []rules.CallExpr {
 				if funcName == "let" || funcName == "if" || funcName == "for" || funcName == "while" || funcName == "match" || funcName == "fn" || funcName == "use" || funcName == "mod" {
 					continue
 				}
-				// Check it's not a method (preceded by .)
 				if loc[0] > 0 && trimmed[loc[0]-1] == '.' {
 					continue
 				}
-				argsStart := loc[1] // after opening paren
+				argsStart := loc[1]
 				args := extractRustMacroArgs(trimmed, argsStart)
 				ce := rules.CallExpr{
 					Line:     lineNum,
@@ -355,14 +465,34 @@ func extractRustCallExprs(lines []string, baseLine int) []rules.CallExpr {
 
 // extractRustMacroArgs parses the arguments from a macro call.
 func extractRustMacroArgs(line string, startIdx int) []rules.Arg {
-	// Find the matching closing paren
 	depth := 1
 	end := startIdx
+	inString := false
+	escaped := false
+
 	for end < len(line) && depth > 0 {
-		if line[end] == '(' {
-			depth++
-		} else if line[end] == ')' {
-			depth--
+		ch := line[end]
+		if escaped {
+			escaped = false
+			end++
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			end++
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			end++
+			continue
+		}
+		if !inString {
+			if ch == '(' {
+				depth++
+			} else if ch == ')' {
+				depth--
+			}
 		}
 		if depth > 0 {
 			end++
@@ -391,14 +521,33 @@ func extractRustMacroArgs(line string, startIdx int) []rules.Arg {
 	return args
 }
 
-// splitRustArgs splits a comma-separated argument string, respecting parens and braces.
+// splitRustArgs splits a comma-separated argument string, respecting parens,
+// braces, and string literals.
 func splitRustArgs(s string) []string {
 	var parts []string
 	depth := 0
 	start := 0
+	inString := false
+	escaped := false
 
 	for i := 0; i < len(s); i++ {
-		switch s[i] {
+		ch := s[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && inString {
+			escaped = true
+			continue
+		}
+		if ch == '"' {
+			inString = !inString
+			continue
+		}
+		if inString {
+			continue
+		}
+		switch ch {
 		case '(', '[', '{':
 			depth++
 		case ')', ']', '}':
@@ -518,13 +667,13 @@ func isRustIdentifier(s string) bool {
 }
 
 // extractRustAssignments extracts let bindings from Rust source and tracks error patterns.
-func extractRustAssignments(lines []string, baseLine int, tf *rules.TestFunc) {
+func extractRustAssignments(lines []numberedLine, tf *rules.TestFunc) {
 	letRe := regexp.MustCompile(`^\s*let\s+(?:mut\s+)?(_|\w+)\s*=\s*(.+?)\s*;?\s*$`)
-	// Destructuring: let (a, b) = ... or let Ok(x) = ...
 	destructRe := regexp.MustCompile(`^\s*let\s+\(([^)]+)\)\s*=\s*(.+?)\s*;?\s*$`)
 
-	for i, line := range lines {
-		lineNum := baseLine + i + 1
+	for _, nl := range lines {
+		line := nl.text
+		lineNum := nl.lineNum
 
 		// Destructuring let
 		if dm := destructRe.FindStringSubmatch(line); dm != nil {

@@ -67,6 +67,21 @@ var rustAssertionMethods = map[string]bool{
 	"expect": true,
 }
 
+// rustLogMacroSet lists Rust logging macros (not code-under-test).
+var rustLogMacroSet = map[string]bool{
+	"println!":  true,
+	"print!":    true,
+	"eprintln!": true,
+	"eprint!":   true,
+	"dbg!":      true,
+	"log!":      true,
+	"info!":     true,
+	"warn!":     true,
+	"error!":    true,
+	"debug!":    true,
+	"trace!":    true,
+}
+
 // IsAssertionCall returns true if the call expression is an assertion.
 func IsAssertionCall(call CallExpr) bool {
 	// testing.T assertion methods (Go)

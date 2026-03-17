@@ -72,13 +72,19 @@ func (r *NoCodeUnderTestRule) Analyze(ctx *AnalysisContext) []Finding {
 		if wellKnownReceivers[call.Receiver] {
 			continue
 		}
+		// Skip Rust assertion macros (empty receiver, but not code-under-test)
+		if IsAssertionCall(call) {
+			continue
+		}
+		// Skip Rust log macros
+		if rustLogMacroSet[call.Function] {
+			continue
+		}
 		// A call to an unknown receiver or a plain function — likely code under test
 		if call.Receiver == "" && call.Function != "" {
-			// Plain function call — could be same-package
 			return nil
 		}
 		if call.Receiver != "" && !wellKnownReceivers[call.Receiver] {
-			// Call to a non-stdlib receiver — likely code under test
 			return nil
 		}
 	}
