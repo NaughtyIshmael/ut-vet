@@ -18,6 +18,10 @@ func ParseGoTestFile(filename string, src []byte) ([]*rules.TestFunc, error) {
 	}
 
 	var testFuncs []*rules.TestFunc
+	pkgName := ""
+	if file.Name != nil {
+		pkgName = file.Name.Name
+	}
 
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
@@ -30,6 +34,7 @@ func ParseGoTestFile(filename string, src []byte) ([]*rules.TestFunc, error) {
 		}
 
 		tf := extractTestFunc(fset, fn, src)
+		tf.PackageName = pkgName
 		testFuncs = append(testFuncs, tf)
 	}
 
@@ -109,6 +114,18 @@ func extractTestFunc(fset *token.FileSet, fn *ast.FuncDecl, src []byte) *rules.T
 		tf.CallExprs = append(tf.CallExprs, ce)
 		return true
 	})
+
+	// P1: Extract local function calls (no receiver = same-package)
+	for _, ce := range tf.CallExprs {
+		if ce.Receiver == "" && ce.Function != "" {
+			tf.LocalFuncCalls = append(tf.LocalFuncCalls, ce.Function)
+		}
+	}
+
+	// P1: Extract assignments and error variable tracking
+	tf.ErrorVarsChecked = make(map[string]bool)
+	extractAssignments(fset, fn.Body, tParamName, src, tf)
+	extractErrorVarChecks(tf)
 
 	return tf
 }
@@ -218,4 +235,77 @@ func extractArg(expr ast.Expr, src []byte, fset *token.FileSet) rules.Arg {
 	}
 
 	return a
+}
+
+// extractAssignments finds multi-value assignments like `result, err := foo()`.
+func extractAssignments(fset *token.FileSet, body *ast.BlockStmt, tParamName string, src []byte, tf *rules.TestFunc) {
+	for _, stmt := range body.List {
+		assign, ok := stmt.(*ast.AssignStmt)
+		if !ok {
+			continue
+		}
+
+		// Only interested in assignments from function calls
+		if len(assign.Rhs) != 1 {
+			continue
+		}
+
+		call, ok := assign.Rhs[0].(*ast.CallExpr)
+		if !ok {
+			continue
+		}
+
+		ce := extractCallExpr(fset, call, tParamName, src)
+
+		a := rules.Assignment{
+			RHSCall: &ce,
+			Line:    fset.Position(assign.Pos()).Line,
+		}
+
+		for _, lhs := range assign.Lhs {
+			if ident, ok := lhs.(*ast.Ident); ok {
+				a.LHS = append(a.LHS, ident.Name)
+			}
+		}
+
+		// Heuristic: last variable is often the error
+		if len(a.LHS) >= 2 {
+			lastVar := a.LHS[len(a.LHS)-1]
+			a.ErrorVarName = lastVar
+			if lastVar == "_" {
+				a.HasBlankError = true
+			}
+		}
+
+		tf.Assignments = append(tf.Assignments, a)
+	}
+}
+
+// extractErrorVarChecks determines which error variables are checked via assertions.
+func extractErrorVarChecks(tf *rules.TestFunc) {
+	for _, call := range tf.CallExprs {
+		// Check assertion calls that reference error variables
+		for _, arg := range call.Args {
+			if arg.IsVariable {
+				for _, assign := range tf.Assignments {
+					if assign.ErrorVarName == arg.VarName && assign.ErrorVarName != "_" {
+						if rules.IsAssertionCall(call) || isErrorCheckCall(call) {
+							tf.ErrorVarsChecked[arg.VarName] = true
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func isErrorCheckCall(call rules.CallExpr) bool {
+	if call.Receiver == "assert" || call.Receiver == "require" {
+		switch call.Function {
+		case "NoError", "Error", "EqualError", "ErrorIs", "ErrorAs",
+			"ErrorContains", "Nil", "NotNil":
+			return true
+		}
+	}
+	return false
 }

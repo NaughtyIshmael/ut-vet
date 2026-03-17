@@ -34,7 +34,17 @@ func DefaultRules() []rules.Rule {
 
 // AllRules returns all available rules.
 func AllRules() []rules.Rule {
-	return DefaultRules()
+	return []rules.Rule{
+		// P0
+		&rules.EmptyTestRule{},
+		&rules.NoAssertionRule{},
+		&rules.LogOnlyRule{},
+		&rules.TrivialAssertRule{},
+		// P1
+		&rules.ErrorNotCheckedRule{},
+		&rules.NoCodeUnderTestRule{},
+		&rules.ZeroValueInputRule{},
+	}
 }
 
 // AnalyzePaths analyzes Go test files at the given paths.

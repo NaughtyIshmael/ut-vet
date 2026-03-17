@@ -431,3 +431,122 @@ func TestTrivial(t *testing.T) {
 		t.Errorf("expected [trivial-assertion], got:\n%s", stdout)
 	}
 }
+
+// --- P1 Rule E2E Tests ---
+
+func TestE2E_DetectsErrorNotChecked(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "a_test.go"), []byte(`package a
+
+import "testing"
+
+func TestIgnoreErr(t *testing.T) {
+	_, _ = doSomething()
+	if true {
+		t.Error("ok")
+	}
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, exitCode := runUTVet(t, "--severity", "p1", dir)
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "[error-not-checked]") {
+		t.Errorf("expected [error-not-checked], got:\n%s", stdout)
+	}
+}
+
+func TestE2E_DetectsZeroValueInput(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "a_test.go"), []byte(`package a
+
+import "testing"
+
+func TestZero(t *testing.T) {
+	result := CreateUser("", 0, false)
+	if result == nil {
+		t.Error("nil result")
+	}
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, exitCode := runUTVet(t, "--severity", "p1", dir)
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "[zero-value-input]") {
+		t.Errorf("expected [zero-value-input], got:\n%s", stdout)
+	}
+}
+
+func TestE2E_P1RulesNotShownByDefault(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "a_test.go"), []byte(`package a
+
+import "testing"
+
+func TestIgnoreErr(t *testing.T) {
+	_, _ = doSomething()
+	if true {
+		t.Error("ok")
+	}
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Default severity is P0, so P1 rules should NOT appear
+	stdout, _, _ := runUTVet(t, dir)
+	if strings.Contains(stdout, "[error-not-checked]") {
+		t.Errorf("[error-not-checked] should NOT appear at default P0 severity.\nOutput:\n%s", stdout)
+	}
+}
+
+func TestE2E_ListRulesShowsP1(t *testing.T) {
+	stdout, _, exitCode := runUTVet(t, "--list-rules")
+	if exitCode != 0 {
+		t.Errorf("expected exit code 0, got %d", exitCode)
+	}
+	for _, rule := range []string{"error-not-checked", "no-code-under-test", "zero-value-input"} {
+		if !strings.Contains(stdout, rule) {
+			t.Errorf("expected rule %q in list, not found.\nOutput:\n%s", rule, stdout)
+		}
+	}
+}
+
+func TestE2E_DetectsNoCodeUnderTest(t *testing.T) {
+	dir := t.TempDir()
+	err := os.WriteFile(filepath.Join(dir, "a_test.go"), []byte(`package a
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestNoPackageCode(t *testing.T) {
+	x := strings.ToUpper("hello")
+	if x != "HELLO" {
+		t.Errorf("expected HELLO, got %s", x)
+	}
+}
+`), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, _, exitCode := runUTVet(t, "--severity", "p1", dir)
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+	if !strings.Contains(stdout, "[no-code-under-test]") {
+		t.Errorf("expected [no-code-under-test], got:\n%s", stdout)
+	}
+}

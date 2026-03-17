@@ -128,18 +128,18 @@ func TestRealCheck(t *testing.T) {
 
 ### `error-not-checked`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Function under test returns an error but the test ignores it by assigning to `_` or not checking it at all.
 
 ```go
-// WOULD BE DETECTED: error assigned to blank identifier
+// DETECTED: error assigned to blank identifier
 func TestSave(t *testing.T) {
     _, _ = repo.Save(entity)
     // test continues without checking error
 }
 
-// WOULD BE DETECTED: error return value completely ignored
+// DETECTED: error return value completely ignored
 func TestSave(t *testing.T) {
     repo.Save(entity)
     // Save returns (Entity, error) but both are dropped
@@ -156,12 +156,12 @@ func TestSave(t *testing.T) {
 
 ### `no-code-under-test`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Test never calls any function from the package being tested. It only calls assertion helpers, standard library, or test utilities.
 
 ```go
-// WOULD BE DETECTED: only calls stdlib and assertions
+// DETECTED: only calls stdlib and assertions
 func TestNothing(t *testing.T) {
     x := strings.ToUpper("hello")
     assert.Equal(t, "HELLO", x)
@@ -201,12 +201,12 @@ func TestGetUser(t *testing.T) {
 
 ### `zero-value-input`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Function under test is called with only zero-values (`nil`, `0`, `""`, `false`, empty struct) as arguments, suggesting no meaningful test scenario was devised.
 
 ```go
-// WOULD BE DETECTED: all zero-value arguments
+// DETECTED: all zero-value arguments
 func TestCreateUser(t *testing.T) {
     user, err := service.CreateUser("", 0, false)
     assert.NoError(t, err)
@@ -295,10 +295,10 @@ func TestHandler(t *testing.T) {
 | `no-assertion` | P0 | ✅ Implemented | No assertion calls |
 | `log-only-test` | P0 | ✅ Implemented | Only logs/prints, no assertions |
 | `trivial-assertion` | P0 | ✅ Implemented | Assertion on constant expression |
-| `error-not-checked` | P1 | 🔲 Planned | Returned error ignored |
-| `no-code-under-test` | P1 | 🔲 Planned | Never calls package functions |
+| `error-not-checked` | P1 | ✅ Implemented | Returned error ignored |
+| `no-code-under-test` | P1 | ✅ Implemented | Never calls package functions |
 | `only-nil-check` | P1 | 🔲 Planned | Only checks err == nil |
-| `zero-value-input` | P1 | 🔲 Planned | All arguments are zero-values |
+| `zero-value-input` | P1 | ✅ Implemented | All arguments are zero-values |
 | `tautological-assert` | P2 | 🔲 Planned | Variable compared to itself |
 | `dead-assertion` | P2 | 🔲 Planned | Assertion after fatal/return |
 | `no-arrange` | P2 | 🔲 Planned | No meaningful test setup |

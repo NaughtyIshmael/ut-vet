@@ -67,6 +67,21 @@ type TestFunc struct {
 	CallExprs  []CallExpr
 	HasBody    bool // false if body is empty (no statements at all)
 	BodyLength int  // number of non-comment statements
+
+	// P1 fields
+	PackageName      string          // package name of the test file
+	LocalFuncCalls   []string        // function calls without a receiver (same-package functions)
+	Assignments      []Assignment    // variable assignments in the test body
+	ErrorVarsChecked map[string]bool // error variables that are passed to an assertion
+}
+
+// Assignment represents a variable assignment, e.g. `result, err := foo()`.
+type Assignment struct {
+	LHS           []string  // left-hand side variable names
+	RHSCall       *CallExpr // the call on the right-hand side, if any
+	HasBlankError bool      // true if error position is assigned to `_`
+	ErrorVarName  string    // name of the error variable (or "_")
+	Line          int
 }
 
 // Statement represents a statement in a test function body.
