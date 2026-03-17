@@ -17,6 +17,20 @@ var rustAssertMacros = map[string]bool{
 	"debug_assert_ne!": true,
 }
 
+// Rust method calls that act as implicit assertions (panic on failure)
+var rustAssertMethods = map[string]bool{
+	"unwrap": true,
+	"expect": true,
+}
+
+// Rust method calls that swallow errors (NOT assertions)
+var rustErrorSwallowMethods = map[string]bool{
+	"unwrap_or":         true,
+	"unwrap_or_default": true,
+	"unwrap_or_else":    true,
+	"ok":                true,
+}
+
 // Rust log/print macros
 var rustLogMacros = map[string]bool{
 	"println!":  true,
@@ -52,7 +66,14 @@ var (
 
 // isRustAssertionCall returns true if the CallExpr is a Rust assertion.
 func isRustAssertionCall(ce rules.CallExpr) bool {
-	return rustAssertMacros[ce.Function]
+	if rustAssertMacros[ce.Function] {
+		return true
+	}
+	// .unwrap() and .expect() are implicit assertions (panic on failure)
+	if rustAssertMethods[ce.Function] && ce.Receiver != "" {
+		return true
+	}
+	return false
 }
 
 // ParseRustTestFile parses a Rust source file and extracts test functions.

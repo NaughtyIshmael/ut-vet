@@ -61,6 +61,12 @@ var rustAssertionMacros = map[string]bool{
 	"debug_assert_ne!": true,
 }
 
+// Rust method calls that act as implicit assertions (panic on failure)
+var rustAssertionMethods = map[string]bool{
+	"unwrap": true,
+	"expect": true,
+}
+
 // IsAssertionCall returns true if the call expression is an assertion.
 func IsAssertionCall(call CallExpr) bool {
 	// testing.T assertion methods (Go)
@@ -73,6 +79,10 @@ func IsAssertionCall(call CallExpr) bool {
 	}
 	// Rust assertion macros
 	if rustAssertionMacros[call.Function] {
+		return true
+	}
+	// Rust assertion methods (.unwrap(), .expect())
+	if rustAssertionMethods[call.Function] && call.Receiver != "" {
 		return true
 	}
 	return false

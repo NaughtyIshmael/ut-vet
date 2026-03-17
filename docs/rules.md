@@ -1,6 +1,6 @@
 # ut-vet Detection Rules
 
-A comprehensive catalog of all test anti-patterns that ut-vet detects or plans to detect.
+A comprehensive catalog of all test anti-patterns that ut-vet detects. Supports **Go** and **Rust**.
 
 ---
 
@@ -22,6 +22,18 @@ func TestDeleteUser(t *testing.T) {
 }
 ```
 
+```rust
+// DETECTED: empty body
+#[test]
+fn test_create_user() {}
+
+// DETECTED: only comments
+#[test]
+fn test_delete_user() {
+    // TODO: implement this test
+}
+```
+
 ---
 
 ### `no-assertion`
@@ -31,8 +43,8 @@ func TestDeleteUser(t *testing.T) {
 Test function has no assertion calls. The test runs code but never checks any result.
 
 Recognized assertion patterns:
-- `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`
-- `assert.*` and `require.*` (testify)
+- **Go**: `t.Error`, `t.Errorf`, `t.Fatal`, `t.Fatalf`, `t.Fail`, `t.FailNow`, `assert.*`, `require.*`
+- **Rust**: `assert!()`, `assert_eq!()`, `assert_ne!()`, `.unwrap()`, `.expect()`
 
 ```go
 // DETECTED: no assertion calls
@@ -50,6 +62,28 @@ func TestCalculate(t *testing.T) {
 }
 ```
 
+```rust
+// DETECTED: no assertion calls
+#[test]
+fn test_calculate() {
+    let result = calculate(1, 2);
+    let _ = result;
+}
+
+// NOT detected: has assert_eq!
+#[test]
+fn test_calculate_good() {
+    let result = calculate(1, 2);
+    assert_eq!(result, 3);
+}
+
+// NOT detected: .unwrap() counts as assertion (panics on error)
+#[test]
+fn test_parse_config() {
+    let _config = parse_config("good.toml").unwrap();
+}
+```
+
 ---
 
 ### `log-only-test`
@@ -59,9 +93,8 @@ func TestCalculate(t *testing.T) {
 Test only calls logging/printing functions but has no assertion calls. Extremely common in AI-generated tests.
 
 Recognized log patterns:
-- `t.Log`, `t.Logf`
-- `fmt.Print`, `fmt.Printf`, `fmt.Println`, `fmt.Fprint`, `fmt.Fprintf`, `fmt.Fprintln`, `fmt.Sprint`, `fmt.Sprintf`, `fmt.Sprintln`
-- `log.Print`, `log.Printf`, `log.Println`, `log.Fatal`, `log.Fatalf`, `log.Fatalln`
+- **Go**: `t.Log`, `t.Logf`, `fmt.Print*`, `log.Print*`
+- **Rust**: `println!`, `print!`, `eprintln!`, `eprint!`, `dbg!`, `log!`, `info!`, `debug!`, `warn!`, `error!`, `trace!`
 
 ```go
 // DETECTED: only logs
@@ -78,6 +111,24 @@ func TestProcess(t *testing.T) {
     if result != "expected" {
         t.Errorf("unexpected result: %s", result)
     }
+}
+```
+
+```rust
+// DETECTED: only logs
+#[test]
+fn test_process() {
+    let result = process("input");
+    println!("result: {}", result);
+    dbg!(&result);
+}
+
+// NOT detected: has log AND assertion
+#[test]
+fn test_process_good() {
+    let result = process("input");
+    println!("result: {}", result);
+    assert_eq!(result, "expected");
 }
 ```
 
@@ -110,15 +161,37 @@ func TestMathIsStable(t *testing.T) {
     assert.Equal(t, 42, 42)
 }
 
-// DETECTED: asserting nil is nil
-func TestNilIsNil(t *testing.T) {
-    require.Nil(t, nil)
-}
-
 // NOT detected: comparing variable to literal
 func TestRealCheck(t *testing.T) {
     result := Compute()
     assert.Equal(t, 42, result)
+}
+```
+
+```rust
+// DETECTED: assert!(true)
+#[test]
+fn test_always_pass() {
+    assert!(true);
+}
+
+// DETECTED: assert_eq! with identical literals
+#[test]
+fn test_math_is_stable() {
+    assert_eq!(42, 42);
+}
+
+// DETECTED: assert_ne! with both literals (trivially true)
+#[test]
+fn test_not_equal_trivial() {
+    assert_ne!(1, 2);
+}
+
+// NOT detected: comparing variable to literal
+#[test]
+fn test_real_check() {
+    let result = compute();
+    assert_eq!(result, 42);
 }
 ```
 
@@ -246,6 +319,15 @@ func TestSamePointer(t *testing.T) {
 }
 ```
 
+```rust
+// DETECTED: comparing variable to itself
+#[test]
+fn test_self_compare() {
+    let result = compute();
+    assert_eq!(result, result);
+}
+```
+
 ---
 
 ### `dead-assertion`
@@ -263,6 +345,15 @@ func TestUnreachable(t *testing.T) {
     }
     t.Fatal("always fails here")
     assert.Equal(t, 42, result) // dead code
+}
+```
+
+```rust
+// DETECTED: assertion after panic! is unreachable
+#[test]
+fn test_unreachable() {
+    panic!("always fails");
+    assert_eq!(1, 2); // dead code
 }
 ```
 

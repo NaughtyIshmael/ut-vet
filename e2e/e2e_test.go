@@ -444,7 +444,13 @@ func TestE2E_Rust_P0RulesDetected(t *testing.T) {
 func TestE2E_Rust_CleanTestsNotFlagged(t *testing.T) {
 	stdout, _, _ := runUTVet(t, "--severity", "p2", rustFixtureDir(t))
 
-	for _, clean := range []string{"test_good_assertion", "test_good_assert", "test_meaningful_inputs", "test_should_panic"} {
+	for _, clean := range []string{
+		"test_good_assertion", "test_good_assert", "test_meaningful_inputs", "test_should_panic",
+		// Advanced fixtures: unwrap/expect are assertions
+		"test_unwrap_is_assertion", "test_expect_is_assertion", "test_unwrap_only",
+		"test_async_with_assert", "test_log_and_assert", "test_panic_expected_message",
+		"test_assert_variable",
+	} {
 		if strings.Contains(stdout, clean) {
 			t.Errorf("%s should NOT appear — it is a valid test.\nOutput:\n%s", clean, stdout)
 		}
@@ -462,6 +468,15 @@ func TestE2E_Rust_P2RulesDetected(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "test_tautological") {
 		t.Error("expected test_tautological in output")
+	}
+	if !strings.Contains(stdout, "[dead-assertion]") {
+		t.Errorf("expected [dead-assertion] in output.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "test_dead_after_panic") {
+		t.Error("expected test_dead_after_panic in output")
+	}
+	if !strings.Contains(stdout, "[trivial-assertion]") {
+		t.Errorf("expected [trivial-assertion] for assert_ne!(1,2).\nOutput:\n%s", stdout)
 	}
 }
 
@@ -493,6 +508,20 @@ func TestE2E_Rust_JSONOutput(t *testing.T) {
 	}
 	if !hasRust {
 		t.Error("expected at least one finding from a .rs file")
+	}
+}
+
+func TestE2E_Rust_UnwrapNotFalsePositive(t *testing.T) {
+	stdout, _, _ := runUTVet(t, "--severity", "p2", rustFixtureDir(t))
+
+	// .unwrap() and .expect() should NOT trigger no-assertion
+	if strings.Contains(stdout, "test_unwrap_only") {
+		t.Errorf("test_unwrap_only should NOT be flagged — .unwrap() is an implicit assertion.\nOutput:\n%s", stdout)
+	}
+
+	// .unwrap_or_default() SHOULD trigger no-assertion (it swallows errors)
+	if !strings.Contains(stdout, "test_swallowed_error") {
+		t.Errorf("test_swallowed_error SHOULD be flagged — .unwrap_or_default() swallows errors.\nOutput:\n%s", stdout)
 	}
 }
 
