@@ -178,12 +178,12 @@ func TestToUpper(t *testing.T) {
 
 ### `only-nil-check`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Test only asserts that the error is nil but never checks the actual return value.
 
 ```go
-// WOULD BE DETECTED: only checks error, ignores result
+// DETECTED: only checks error, ignores result
 func TestGetUser(t *testing.T) {
     _, err := service.GetUser(42)
     assert.NoError(t, err)
@@ -297,7 +297,7 @@ func TestHandler(t *testing.T) {
 | `trivial-assertion` | P0 | ✅ Implemented | Assertion on constant expression |
 | `error-not-checked` | P1 | ✅ Implemented | Returned error ignored |
 | `no-code-under-test` | P1 | ✅ Implemented | Never calls package functions |
-| `only-nil-check` | P1 | 🔲 Planned | Only checks err == nil |
+| `only-nil-check` | P1 | ✅ Implemented | Only checks err == nil |
 | `zero-value-input` | P1 | ✅ Implemented | All arguments are zero-values |
 | `tautological-assert` | P2 | ✅ Implemented | Variable compared to itself |
 | `dead-assertion` | P2 | ✅ Implemented | Assertion after fatal/return |

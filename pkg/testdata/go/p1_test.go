@@ -40,3 +40,16 @@ func TestCreateUserReal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Alice", user.Name)
 }
+
+// SHOULD TRIGGER: only-nil-check — only checks error, ignores result
+func TestGetUserOnlyErr(t *testing.T) {
+	_, err := GetUser(42)
+	assert.NoError(t, err)
+}
+
+// SHOULD NOT TRIGGER: checks both error and result
+func TestGetUserFull(t *testing.T) {
+	user, err := GetUser(42)
+	require.NoError(t, err)
+	assert.Equal(t, "Alice", user.Name)
+}

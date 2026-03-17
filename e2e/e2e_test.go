@@ -163,6 +163,12 @@ func TestE2E_Fixtures_P1RulesDetected(t *testing.T) {
 	if !strings.Contains(stdout, "[no-code-under-test]") {
 		t.Errorf("expected [no-code-under-test] from fixtures.\nOutput:\n%s", stdout)
 	}
+	if !strings.Contains(stdout, "[only-nil-check]") {
+		t.Errorf("expected [only-nil-check] from p1_test.go fixtures.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TestGetUserOnlyErr") {
+		t.Errorf("expected TestGetUserOnlyErr in output")
+	}
 }
 
 func TestE2E_Fixtures_P1CleanTestsNotFlagged(t *testing.T) {
@@ -175,13 +181,16 @@ func TestE2E_Fixtures_P1CleanTestsNotFlagged(t *testing.T) {
 	if strings.Contains(stdout, "TestCreateUserReal") {
 		t.Error("TestCreateUserReal should NOT appear — has meaningful inputs")
 	}
+	if strings.Contains(stdout, "TestGetUserFull") {
+		t.Error("TestGetUserFull should NOT appear — checks both error and result")
+	}
 }
 
 func TestE2E_Fixtures_P1RulesNotShownAtP0Severity(t *testing.T) {
 	stdout, _, _ := runUTVet(t, fixtureDir(t))
 
 	// Default severity is P0, so P1 rules should NOT appear
-	for _, rule := range []string{"[error-not-checked]", "[zero-value-input]"} {
+	for _, rule := range []string{"[error-not-checked]", "[zero-value-input]", "[only-nil-check]"} {
 		if strings.Contains(stdout, rule) {
 			t.Errorf("%s should NOT appear at default P0 severity.\nOutput:\n%s", rule, stdout)
 		}
@@ -320,7 +329,7 @@ func TestE2E_ListRulesFlag(t *testing.T) {
 		t.Errorf("expected exit code 0, got %d", exitCode)
 	}
 
-	for _, rule := range []string{"empty-test", "no-assertion", "log-only-test", "trivial-assertion", "error-not-checked", "no-code-under-test", "zero-value-input", "tautological-assert", "dead-assertion", "no-arrange"} {
+	for _, rule := range []string{"empty-test", "no-assertion", "log-only-test", "trivial-assertion", "error-not-checked", "no-code-under-test", "zero-value-input", "only-nil-check", "tautological-assert", "dead-assertion", "no-arrange"} {
 		if !strings.Contains(stdout, rule) {
 			t.Errorf("expected rule %q in list, not found", rule)
 		}
