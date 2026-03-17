@@ -227,12 +227,12 @@ func TestCreateUser(t *testing.T) {
 
 ### `tautological-assert`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Assertion compares a variable to itself, which is always true.
 
 ```go
-// WOULD BE DETECTED: comparing variable to itself
+// DETECTED: comparing variable to itself
 func TestSelfCompare(t *testing.T) {
     result := Compute()
     assert.Equal(t, result, result)
@@ -243,12 +243,12 @@ func TestSelfCompare(t *testing.T) {
 
 ### `dead-assertion`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Assertion appears after `t.Fatal`, `t.FailNow`, or `return` — it can never be reached.
 
 ```go
-// WOULD BE DETECTED: assertion after t.Fatal is unreachable
+// DETECTED: assertion after t.Fatal is unreachable
 func TestUnreachable(t *testing.T) {
     result, err := DoSomething()
     if err != nil {
@@ -263,12 +263,12 @@ func TestUnreachable(t *testing.T) {
 
 ### `no-arrange`
 
-**Status:** 🔲 Planned
+**Status:** ✅ Implemented
 
 Test has assertions but no meaningful setup — calls the function under test with only zero-value or nil arguments and no prior arrangement.
 
 ```go
-// WOULD BE DETECTED: no arrange phase, nil arguments
+// DETECTED: no arrange phase, nil arguments
 func TestHandler(t *testing.T) {
     handler := NewHandler(nil, nil)
     err := handler.Process(nil)
@@ -299,6 +299,6 @@ func TestHandler(t *testing.T) {
 | `no-code-under-test` | P1 | ✅ Implemented | Never calls package functions |
 | `only-nil-check` | P1 | 🔲 Planned | Only checks err == nil |
 | `zero-value-input` | P1 | ✅ Implemented | All arguments are zero-values |
-| `tautological-assert` | P2 | 🔲 Planned | Variable compared to itself |
-| `dead-assertion` | P2 | 🔲 Planned | Assertion after fatal/return |
-| `no-arrange` | P2 | 🔲 Planned | No meaningful test setup |
+| `tautological-assert` | P2 | ✅ Implemented | Variable compared to itself |
+| `dead-assertion` | P2 | ✅ Implemented | Assertion after fatal/return |
+| `no-arrange` | P2 | ✅ Implemented | No meaningful test setup |

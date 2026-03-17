@@ -44,6 +44,10 @@ func AllRules() []rules.Rule {
 		&rules.ErrorNotCheckedRule{},
 		&rules.NoCodeUnderTestRule{},
 		&rules.ZeroValueInputRule{},
+		// P2
+		&rules.TautologicalAssertRule{},
+		&rules.DeadAssertionRule{},
+		&rules.NoArrangeRule{},
 	}
 }
 

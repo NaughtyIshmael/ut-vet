@@ -320,7 +320,7 @@ func TestE2E_ListRulesFlag(t *testing.T) {
 		t.Errorf("expected exit code 0, got %d", exitCode)
 	}
 
-	for _, rule := range []string{"empty-test", "no-assertion", "log-only-test", "trivial-assertion", "error-not-checked", "no-code-under-test", "zero-value-input"} {
+	for _, rule := range []string{"empty-test", "no-assertion", "log-only-test", "trivial-assertion", "error-not-checked", "no-code-under-test", "zero-value-input", "tautological-assert", "dead-assertion", "no-arrange"} {
 		if !strings.Contains(stdout, rule) {
 			t.Errorf("expected rule %q in list, not found", rule)
 		}
@@ -351,5 +351,54 @@ func TestE2E_NonTestGoFile(t *testing.T) {
 	_, _, exitCode := runUTVet(t, dir)
 	if exitCode != 0 {
 		t.Errorf("expected exit code 0 for non-test file, got %d", exitCode)
+	}
+}
+
+// --- P2 Rule E2E Tests (fixture-based) ---
+
+func TestE2E_Fixtures_P2RulesDetected(t *testing.T) {
+	stdout, _, exitCode := runUTVet(t, "--severity", "p2", fixtureDir(t))
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+
+	// p2_test.go fixtures
+	if !strings.Contains(stdout, "[tautological-assert]") {
+		t.Errorf("expected [tautological-assert] from p2_test.go fixtures.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TestSelfCompare") {
+		t.Error("expected TestSelfCompare in output")
+	}
+
+	if !strings.Contains(stdout, "[dead-assertion]") {
+		t.Errorf("expected [dead-assertion] from p2_test.go fixtures.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TestDeadCode") {
+		t.Error("expected TestDeadCode in output")
+	}
+
+	if !strings.Contains(stdout, "[no-arrange]") {
+		t.Errorf("expected [no-arrange] from p2_test.go fixtures.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TestNilSetup") {
+		t.Error("expected TestNilSetup in output")
+	}
+}
+
+func TestE2E_Fixtures_P2CleanTestsNotFlagged(t *testing.T) {
+	stdout, _, _ := runUTVet(t, "--severity", "p2", fixtureDir(t))
+
+	if strings.Contains(stdout, "TestGoodSetup") {
+		t.Error("TestGoodSetup should NOT appear — it has meaningful setup")
+	}
+}
+
+func TestE2E_Fixtures_P2RulesNotShownAtP0(t *testing.T) {
+	stdout, _, _ := runUTVet(t, fixtureDir(t))
+
+	for _, rule := range []string{"[tautological-assert]", "[dead-assertion]", "[no-arrange]"} {
+		if strings.Contains(stdout, rule) {
+			t.Errorf("%s should NOT appear at default P0 severity", rule)
+		}
 	}
 }

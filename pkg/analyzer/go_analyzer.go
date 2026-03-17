@@ -127,6 +127,9 @@ func extractTestFunc(fset *token.FileSet, fn *ast.FuncDecl, src []byte) *rules.T
 	extractAssignments(fset, fn.Body, tParamName, src, tf)
 	extractErrorVarChecks(tf)
 
+	// P2: Extract terminating statements
+	extractTerminatingStatements(fset, fn.Body, tParamName, tf)
+
 	return tf
 }
 
@@ -325,4 +328,31 @@ func isErrorVarName(name string) bool {
 		return true // e.g., "errSave", "errHTTP"
 	}
 	return false
+}
+
+// extractTerminatingStatements finds top-level t.Fatal, t.FailNow, return, etc.
+func extractTerminatingStatements(fset *token.FileSet, body *ast.BlockStmt, tParamName string, tf *rules.TestFunc) {
+	for _, stmt := range body.List {
+		switch s := stmt.(type) {
+		case *ast.ReturnStmt:
+			tf.TerminatingStatements = append(tf.TerminatingStatements, rules.TerminatingStatement{
+				Line: fset.Position(s.Pos()).Line,
+				Kind: "return",
+			})
+		case *ast.ExprStmt:
+			if call, ok := s.X.(*ast.CallExpr); ok {
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+					if ident, ok := sel.X.(*ast.Ident); ok && ident.Name == tParamName {
+						switch sel.Sel.Name {
+						case "Fatal", "Fatalf", "FailNow":
+							tf.TerminatingStatements = append(tf.TerminatingStatements, rules.TerminatingStatement{
+								Line: fset.Position(s.Pos()).Line,
+								Kind: tParamName + "." + sel.Sel.Name,
+							})
+						}
+					}
+				}
+			}
+		}
+	}
 }

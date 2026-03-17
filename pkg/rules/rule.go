@@ -73,6 +73,15 @@ type TestFunc struct {
 	LocalFuncCalls   []string        // function calls without a receiver (same-package functions)
 	Assignments      []Assignment    // variable assignments in the test body
 	ErrorVarsChecked map[string]bool // error variables that are passed to an assertion
+
+	// P2 fields
+	TerminatingStatements []TerminatingStatement // t.Fatal, t.FailNow, return, etc.
+}
+
+// TerminatingStatement represents a statement that stops test execution.
+type TerminatingStatement struct {
+	Line int
+	Kind string // "t.Fatal", "t.Fatalf", "t.FailNow", "return", "os.Exit"
 }
 
 // Assignment represents a variable assignment, e.g. `result, err := foo()`.
