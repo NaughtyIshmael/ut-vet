@@ -246,16 +246,17 @@ func buildRustTestFunc(name string, line int, bodyLines []string, hasShouldPanic
 	}
 
 	// Extract terminating statements (panic!, return, unreachable!)
-	for _, bl := range nonCommentLines {
+	for i, bl := range nonCommentLines {
 		trimmed := strings.TrimSpace(bl)
-		if strings.HasPrefix(trimmed, "panic!") {
+		stmtLine := line + i + 1
+		if strings.HasPrefix(trimmed, "panic!") || strings.HasPrefix(trimmed, "unreachable!") {
 			tf.TerminatingStatements = append(tf.TerminatingStatements, rules.TerminatingStatement{
-				Line: line,
+				Line: stmtLine,
 				Kind: "panic!",
 			})
 		} else if strings.HasPrefix(trimmed, "return") {
 			tf.TerminatingStatements = append(tf.TerminatingStatements, rules.TerminatingStatement{
-				Line: line,
+				Line: stmtLine,
 				Kind: "return",
 			})
 		}
@@ -294,21 +295,26 @@ func extractRustCallExprs(lines []string, baseLine int) []rules.CallExpr {
 			}
 		}
 
-		// Find method calls: .method(args) — gives receiver context
-		methodMatches := methodCallRe.FindAllStringSubmatch(trimmed, -1)
-		for _, m := range methodMatches {
-			methodName := m[1]
-			// Skip if it's a macro (already handled)
+		// Find method calls: .method(args) — extract receiver from context
+		methodMatchIndices := methodCallRe.FindAllStringSubmatchIndex(trimmed, -1)
+		for _, loc := range methodMatchIndices {
+			methodName := trimmed[loc[2]:loc[3]]
 			if strings.Contains(methodName, "!") {
 				continue
 			}
+			// Extract receiver: text before the dot
+			dotPos := loc[0]
+			receiver := extractRustReceiver(trimmed, dotPos)
+			argsStart := loc[1] // after opening paren
+			args := extractRustMacroArgs(trimmed, argsStart)
 			ce := rules.CallExpr{
 				Line:     lineNum,
 				Function: methodName,
-				Receiver: "self", // simplified
-				FullName: "." + methodName,
+				Receiver: receiver,
+				FullName: receiver + "." + methodName,
+				Args:     args,
 			}
-			key := "." + methodName
+			key := receiver + "." + methodName + "@" + strings.Join(argValues(args), ",")
 			if !seen[key] {
 				calls = append(calls, ce)
 				seen[key] = true
@@ -316,20 +322,26 @@ func extractRustCallExprs(lines []string, baseLine int) []rules.CallExpr {
 		}
 
 		// Find bare function calls (not macros, not methods)
-		// Only if line is not dominated by a macro call
 		if !macroCallRe.MatchString(trimmed) {
-			funcMatches := funcCallRe.FindAllStringSubmatch(trimmed, -1)
-			for _, m := range funcMatches {
-				funcName := m[1]
-				if funcName == "let" || funcName == "if" || funcName == "for" || funcName == "while" || funcName == "match" || funcName == "fn" {
+			funcMatchIndices := funcCallRe.FindAllStringSubmatchIndex(trimmed, -1)
+			for _, loc := range funcMatchIndices {
+				funcName := trimmed[loc[2]:loc[3]]
+				if funcName == "let" || funcName == "if" || funcName == "for" || funcName == "while" || funcName == "match" || funcName == "fn" || funcName == "use" || funcName == "mod" {
 					continue
 				}
+				// Check it's not a method (preceded by .)
+				if loc[0] > 0 && trimmed[loc[0]-1] == '.' {
+					continue
+				}
+				argsStart := loc[1] // after opening paren
+				args := extractRustMacroArgs(trimmed, argsStart)
 				ce := rules.CallExpr{
 					Line:     lineNum,
 					Function: funcName,
 					FullName: funcName,
+					Args:     args,
 				}
-				key := funcName
+				key := funcName + "@" + strings.Join(argValues(args), ",")
 				if !seen[key] {
 					calls = append(calls, ce)
 					seen[key] = true
@@ -505,12 +517,38 @@ func isRustIdentifier(s string) bool {
 	return true
 }
 
-// extractRustAssignments extracts let bindings from Rust source.
+// extractRustAssignments extracts let bindings from Rust source and tracks error patterns.
 func extractRustAssignments(lines []string, baseLine int, tf *rules.TestFunc) {
 	letRe := regexp.MustCompile(`^\s*let\s+(?:mut\s+)?(_|\w+)\s*=\s*(.+?)\s*;?\s*$`)
+	// Destructuring: let (a, b) = ... or let Ok(x) = ...
+	destructRe := regexp.MustCompile(`^\s*let\s+\(([^)]+)\)\s*=\s*(.+?)\s*;?\s*$`)
 
 	for i, line := range lines {
 		lineNum := baseLine + i + 1
+
+		// Destructuring let
+		if dm := destructRe.FindStringSubmatch(line); dm != nil {
+			vars := strings.Split(dm[1], ",")
+			var lhs []string
+			for _, v := range vars {
+				lhs = append(lhs, strings.TrimSpace(v))
+			}
+			rhs := dm[2]
+			a := rules.Assignment{
+				LHS:  lhs,
+				Line: lineNum,
+			}
+			if fcMatch := funcCallRe.FindStringSubmatch(rhs); fcMatch != nil {
+				a.RHSCall = &rules.CallExpr{
+					Function: fcMatch[1],
+					FullName: fcMatch[1],
+				}
+			}
+			tf.Assignments = append(tf.Assignments, a)
+			continue
+		}
+
+		// Simple let
 		m := letRe.FindStringSubmatch(line)
 		if m == nil {
 			continue
@@ -532,7 +570,39 @@ func extractRustAssignments(lines []string, baseLine int, tf *rules.TestFunc) {
 			}
 		}
 
+		// Track error swallowing patterns
+		if varName == "_" {
+			// let _ = fallible() — error/result discarded
+			a.HasBlankError = true
+			a.ErrorVarName = "_"
+		}
+
+		// Track .unwrap_or_default(), .ok(), etc. as error-swallowing
+		for method := range rustErrorSwallowMethods {
+			if strings.Contains(rhs, "."+method+"(") {
+				a.HasBlankError = true
+				a.ErrorVarName = "_"
+			}
+		}
+
 		tf.Assignments = append(tf.Assignments, a)
+	}
+
+	// Track which error-like variables are checked in assertions
+	extractRustErrorVarChecks(tf)
+}
+
+// extractRustErrorVarChecks marks error variables that appear in assertion calls.
+func extractRustErrorVarChecks(tf *rules.TestFunc) {
+	for _, ce := range tf.CallExprs {
+		if !rules.IsAssertionCall(ce) {
+			continue
+		}
+		for _, arg := range ce.Args {
+			if arg.IsVariable {
+				tf.ErrorVarsChecked[arg.VarName] = true
+			}
+		}
 	}
 }
 
@@ -542,6 +612,42 @@ func argValues(args []rules.Arg) []string {
 		vals = append(vals, a.Value)
 	}
 	return vals
+}
+
+// extractRustReceiver extracts the receiver expression before a dot at position dotPos.
+func extractRustReceiver(line string, dotPos int) string {
+	if dotPos <= 0 {
+		return "self"
+	}
+	// Walk backwards to find the receiver identifier
+	end := dotPos
+	// Skip closing parens (for chained calls like foo().method())
+	if end > 0 && line[end-1] == ')' {
+		depth := 1
+		end--
+		for end > 0 && depth > 0 {
+			end--
+			if line[end] == ')' {
+				depth++
+			} else if line[end] == '(' {
+				depth--
+			}
+		}
+	}
+	// Now find the identifier
+	i := end - 1
+	for i >= 0 && (isIdentChar(line[i])) {
+		i--
+	}
+	receiver := line[i+1 : end]
+	if receiver == "" {
+		return "self"
+	}
+	return receiver
+}
+
+func isIdentChar(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_'
 }
 
 // isRustTestFile checks if a file path is a Rust file.

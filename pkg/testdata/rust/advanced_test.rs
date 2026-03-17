@@ -19,6 +19,7 @@ mod tests {
     }
 
     // SHOULD NOT TRIGGER: only .unwrap() but still valid (panics on error)
+    // NOTE: triggers only-nil-check since it only checks error, not result value
     #[test]
     fn test_unwrap_only() {
         let _result = compute(42).unwrap();

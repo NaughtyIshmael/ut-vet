@@ -1,6 +1,9 @@
 package rules
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // OnlyNilCheckRule detects tests that only assert err == nil without checking
 // the actual return value. This is a common pattern in AI-generated tests.
@@ -48,12 +51,12 @@ func (r *OnlyNilCheckRule) Analyze(ctx *AnalysisContext) []Finding {
 
 // isErrorOnlyAssertion returns true if the assertion call only checks an error condition.
 func isErrorOnlyAssertion(ce CallExpr) bool {
+	// Go: testify assert/require
 	if ce.Receiver == "assert" || ce.Receiver == "require" {
 		switch ce.Function {
 		case "NoError", "Error":
 			return true
 		case "Nil", "NotNil":
-			// Only error-related if the argument is an error variable
 			for _, arg := range ce.Args {
 				if arg.IsVariable && isLikelyErrorVar(arg.VarName) {
 					return true
@@ -62,7 +65,7 @@ func isErrorOnlyAssertion(ce CallExpr) bool {
 		}
 	}
 
-	// t.Error/Fatal/Fatalf with an error variable as argument
+	// Go: t.Fatal/Fatalf with error variable
 	if ce.IsTestingT {
 		switch ce.Function {
 		case "Fatal", "Fatalf":
@@ -72,6 +75,20 @@ func isErrorOnlyAssertion(ce CallExpr) bool {
 				}
 			}
 		}
+	}
+
+	// Rust: assert!(result.is_ok()) or assert!(result.is_err())
+	if ce.Function == "assert!" && len(ce.Args) == 1 {
+		val := ce.Args[0].Value
+		if strings.HasSuffix(val, ".is_ok()") || strings.HasSuffix(val, ".is_err()") ||
+			strings.HasSuffix(val, ".is_none()") || strings.HasSuffix(val, ".is_some()") {
+			return true
+		}
+	}
+
+	// Rust: .unwrap() / .expect() are implicit error assertions
+	if rustAssertionMethods[ce.Function] && ce.Receiver != "" {
+		return true
 	}
 
 	return false

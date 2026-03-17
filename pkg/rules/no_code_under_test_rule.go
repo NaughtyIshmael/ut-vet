@@ -14,6 +14,7 @@ func (r *NoCodeUnderTestRule) Severity() Severity { return SeverityP1 }
 
 // wellKnownReceivers are receivers that are NOT code-under-test.
 var wellKnownReceivers = map[string]bool{
+	// Go stdlib
 	"assert":   true,
 	"require":  true,
 	"fmt":      true,
@@ -35,6 +36,17 @@ var wellKnownReceivers = map[string]bool{
 	"errors":   true,
 	"path":     true,
 	"filepath": true,
+	// Rust stdlib / well-known types
+	"std":     true,
+	"Vec":     true,
+	"String":  true,
+	"HashMap": true,
+	"HashSet": true,
+	"Option":  true,
+	"Result":  true,
+	"Box":     true,
+	"Rc":      true,
+	"Arc":     true,
 }
 
 func (r *NoCodeUnderTestRule) Analyze(ctx *AnalysisContext) []Finding {

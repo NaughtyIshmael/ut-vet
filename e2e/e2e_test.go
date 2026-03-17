@@ -446,8 +446,8 @@ func TestE2E_Rust_CleanTestsNotFlagged(t *testing.T) {
 
 	for _, clean := range []string{
 		"test_good_assertion", "test_good_assert", "test_meaningful_inputs", "test_should_panic",
-		// Advanced fixtures: unwrap/expect are assertions
-		"test_unwrap_is_assertion", "test_expect_is_assertion", "test_unwrap_only",
+		// Advanced fixtures: unwrap/expect are assertions (no-assertion won't fire)
+		"test_unwrap_is_assertion", "test_expect_is_assertion",
 		"test_async_with_assert", "test_log_and_assert", "test_panic_expected_message",
 		"test_assert_variable",
 	} {
@@ -514,9 +514,22 @@ func TestE2E_Rust_JSONOutput(t *testing.T) {
 func TestE2E_Rust_UnwrapNotFalsePositive(t *testing.T) {
 	stdout, _, _ := runUTVet(t, "--severity", "p2", rustFixtureDir(t))
 
-	// .unwrap() and .expect() should NOT trigger no-assertion
-	if strings.Contains(stdout, "test_unwrap_only") {
-		t.Errorf("test_unwrap_only should NOT be flagged — .unwrap() is an implicit assertion.\nOutput:\n%s", stdout)
+	// .unwrap() should NOT trigger no-assertion (it IS an assertion)
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.Contains(line, "test_unwrap_only") && strings.Contains(line, "[no-assertion]") {
+			t.Errorf("test_unwrap_only should NOT trigger no-assertion — .unwrap() is an implicit assertion")
+		}
+	}
+
+	// .unwrap() SHOULD trigger only-nil-check (it only checks error, not result)
+	hasOnlyNilCheck := false
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.Contains(line, "test_unwrap_only") && strings.Contains(line, "[only-nil-check]") {
+			hasOnlyNilCheck = true
+		}
+	}
+	if !hasOnlyNilCheck {
+		t.Errorf("test_unwrap_only SHOULD trigger only-nil-check.\nOutput:\n%s", stdout)
 	}
 
 	// .unwrap_or_default() SHOULD trigger no-assertion (it swallows errors)

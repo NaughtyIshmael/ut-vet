@@ -67,17 +67,14 @@ func (r *TrivialAssertRule) checkTrivial(call CallExpr) bool {
 
 	// Rust macros
 	case "assert!":
-		// assert!(true) — trivial
 		return len(args) >= 1 && args[0].IsLiteral && args[0].Value == "true"
 
-	case "assert_eq!":
-		// assert_eq!(1, 1) — trivial if both are identical literals
+	case "assert_eq!", "debug_assert_eq!":
 		if len(args) >= 2 {
 			return args[0].IsLiteral && args[1].IsLiteral && args[0].Value == args[1].Value
 		}
 
-	case "assert_ne!":
-		// assert_ne!(1, 2) with both literals — trivially true
+	case "assert_ne!", "debug_assert_ne!":
 		if len(args) >= 2 {
 			return args[0].IsLiteral && args[1].IsLiteral
 		}

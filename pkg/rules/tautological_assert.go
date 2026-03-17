@@ -27,7 +27,7 @@ func (r *TautologicalAssertRule) Analyze(ctx *AnalysisContext) []Finding {
 		}
 
 		switch call.Function {
-		case "Equal", "Exactly", "Same", "assert_eq!":
+		case "Equal", "Exactly", "Same", "assert_eq!", "debug_assert_eq!":
 			if len(args) >= 2 && args[0].IsVariable && args[1].IsVariable && args[0].VarName == args[1].VarName {
 				findings = append(findings, Finding{
 					File:     ctx.File,
