@@ -268,11 +268,17 @@ func extractAssignments(fset *token.FileSet, body *ast.BlockStmt, tParamName str
 			}
 		}
 
-		// Heuristic: last variable is often the error
+		// Heuristic: detect error variables
+		// Only treat the last variable as an error if:
+		// 1. It's explicitly named "err" or starts with "err" (e.g., "errSave")
+		// 2. OR it's "_" in a 2-value assignment (the common `result, _ = foo()` pattern)
+		//    but NOT in 3+ value assignments where "_" could be any type
 		if len(a.LHS) >= 2 {
 			lastVar := a.LHS[len(a.LHS)-1]
-			a.ErrorVarName = lastVar
-			if lastVar == "_" {
+			if isErrorVarName(lastVar) {
+				a.ErrorVarName = lastVar
+			} else if lastVar == "_" && len(a.LHS) == 2 {
+				a.ErrorVarName = "_"
 				a.HasBlankError = true
 			}
 		}
@@ -306,6 +312,17 @@ func isErrorCheckCall(call rules.CallExpr) bool {
 			"ErrorContains", "Nil", "NotNil":
 			return true
 		}
+	}
+	return false
+}
+
+// isErrorVarName returns true if the name looks like an error variable.
+func isErrorVarName(name string) bool {
+	if name == "err" || name == "e" {
+		return true
+	}
+	if len(name) > 3 && name[:3] == "err" && name[3] >= 'A' && name[3] <= 'Z' {
+		return true // e.g., "errSave", "errHTTP"
 	}
 	return false
 }

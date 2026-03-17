@@ -27,7 +27,7 @@ test-race:
 
 # Run ut-vet against its own test files (dogfooding)
 dogfood: build
-	./bin/ut-vet -v ./pkg/ ./e2e/ || true
+	./bin/ut-vet -v --severity p2 ./pkg/ ./e2e/ || true
 
 # Run go fmt
 fmt:
