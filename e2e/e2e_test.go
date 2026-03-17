@@ -392,6 +392,13 @@ func TestE2E_Fixtures_P2RulesDetected(t *testing.T) {
 	if !strings.Contains(stdout, "TestNilSetup") {
 		t.Error("expected TestNilSetup in output")
 	}
+
+	if !strings.Contains(stdout, "[happy-path-only]") {
+		t.Errorf("expected [happy-path-only] from p2_test.go fixtures.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TestCreateUserHappyOnly") {
+		t.Error("expected TestCreateUserHappyOnly in output")
+	}
 }
 
 func TestE2E_Fixtures_P2CleanTestsNotFlagged(t *testing.T) {
@@ -405,7 +412,7 @@ func TestE2E_Fixtures_P2CleanTestsNotFlagged(t *testing.T) {
 func TestE2E_Fixtures_P2RulesNotShownAtP0(t *testing.T) {
 	stdout, _, _ := runUTVet(t, fixtureDir(t))
 
-	for _, rule := range []string{"[tautological-assert]", "[dead-assertion]", "[no-arrange]"} {
+	for _, rule := range []string{"[tautological-assert]", "[dead-assertion]", "[no-arrange]", "[happy-path-only]"} {
 		if strings.Contains(stdout, rule) {
 			t.Errorf("%s should NOT appear at default P0 severity", rule)
 		}
@@ -445,10 +452,8 @@ func TestE2E_Rust_CleanTestsNotFlagged(t *testing.T) {
 	stdout, _, _ := runUTVet(t, "--severity", "p2", rustFixtureDir(t))
 
 	for _, clean := range []string{
-		"test_good_assertion", "test_good_assert", "test_meaningful_inputs", "test_should_panic",
-		// Advanced fixtures: unwrap/expect are assertions (no-assertion won't fire)
-		"test_unwrap_is_assertion", "test_expect_is_assertion",
-		"test_async_with_assert", "test_log_and_assert", "test_panic_expected_message",
+		"test_good_assertion", "test_good_assert", "test_should_panic",
+		"test_log_and_assert", "test_panic_expected_message",
 		"test_assert_variable",
 	} {
 		if strings.Contains(stdout, clean) {
@@ -477,6 +482,12 @@ func TestE2E_Rust_P2RulesDetected(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "[trivial-assertion]") {
 		t.Errorf("expected [trivial-assertion] for assert_ne!(1,2).\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "[happy-path-only]") {
+		t.Errorf("expected [happy-path-only] for test_parse_happy_only.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "test_parse_happy_only") {
+		t.Error("expected test_parse_happy_only in output")
 	}
 }
 

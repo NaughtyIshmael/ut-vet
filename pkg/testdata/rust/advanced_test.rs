@@ -103,4 +103,18 @@ mod tests {
     fn test_trivial_ne() {
         assert_ne!(1, 2);
     }
+
+    // SHOULD TRIGGER: happy-path-only — only unwraps, never tests error
+    #[test]
+    fn test_parse_happy_only() {
+        let config = parse_config("good.toml").unwrap();
+        assert_eq!(config.name, "production");
+    }
+
+    // SHOULD NOT TRIGGER: tests the error path
+    #[test]
+    fn test_parse_error_path() {
+        let result = parse_config("bad.toml");
+        assert!(result.is_err());
+    }
 }

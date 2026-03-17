@@ -49,6 +49,7 @@ func AllRules() []rules.Rule {
 		&rules.TautologicalAssertRule{},
 		&rules.DeadAssertionRule{},
 		&rules.NoArrangeRule{},
+		&rules.HappyPathOnlyRule{},
 	}
 }
 

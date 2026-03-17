@@ -29,3 +29,16 @@ func TestGoodSetup(t *testing.T) {
 	result := Compute()
 	assert.Equal(t, 42, result)
 }
+
+// SHOULD TRIGGER: happy-path-only — only tests success, never error
+func TestCreateUserHappyOnly(t *testing.T) {
+	user, err := CreateUser("john")
+	assert.NoError(t, err)
+	assert.Equal(t, "john", user.Name)
+}
+
+// SHOULD NOT TRIGGER: tests error path
+func TestCreateUserError(t *testing.T) {
+	_, err := CreateUser("")
+	assert.Error(t, err)
+}

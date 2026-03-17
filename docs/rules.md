@@ -385,6 +385,45 @@ func TestHandler(t *testing.T) {
 
 ---
 
+### `happy-path-only`
+
+**Status:** ✅ Implemented
+
+Test calls a fallible function and properly validates the success case, but never tests any error/failure scenario. The test checks both the error and the result, yet no error-path assertion (like `assert.Error` or `assert!(result.is_err())`) exists.
+
+```go
+// DETECTED: success validated, error path never tested
+func TestCreateUser(t *testing.T) {
+    user, err := CreateUser("john")
+    require.NoError(t, err)
+    assert.Equal(t, "john", user.Name)
+}
+
+// NOT detected: tests error path
+func TestCreateUser_Error(t *testing.T) {
+    _, err := CreateUser("")
+    assert.Error(t, err)
+}
+```
+
+```rust
+// DETECTED: only success path tested
+#[test]
+fn test_parse_config() {
+    let config = parse_config("good.toml").unwrap();
+    assert_eq!(config.name, "production");
+}
+
+// NOT detected: tests error path
+#[test]
+fn test_parse_config_error() {
+    let result = parse_config("bad.toml");
+    assert!(result.is_err());
+}
+```
+
+---
+
 ## Summary
 
 | Rule | Severity | Status | Description |
@@ -400,3 +439,4 @@ func TestHandler(t *testing.T) {
 | `tautological-assert` | P2 | ✅ Implemented | Variable compared to itself |
 | `dead-assertion` | P2 | ✅ Implemented | Assertion after fatal/return |
 | `no-arrange` | P2 | ✅ Implemented | No meaningful test setup |
+| `happy-path-only` | P2 | ✅ Implemented | Only tests success path of fallible function |
