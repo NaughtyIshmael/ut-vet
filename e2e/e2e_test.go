@@ -411,3 +411,105 @@ func TestE2E_Fixtures_P2RulesNotShownAtP0(t *testing.T) {
 		}
 	}
 }
+
+// --- Rust E2E Tests ---
+
+func rustFixtureDir(t *testing.T) string {
+	t.Helper()
+	_, thisFile, _, _ := runtime.Caller(0)
+	return filepath.Join(filepath.Dir(thisFile), "..", "pkg", "testdata", "rust")
+}
+
+func TestE2E_Rust_P0RulesDetected(t *testing.T) {
+	stdout, _, exitCode := runUTVet(t, rustFixtureDir(t))
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+
+	for _, expect := range []struct{ rule, testName string }{
+		{"[empty-test]", "test_empty"},
+		{"[no-assertion]", "test_no_assertion"},
+		{"[log-only-test]", "test_log_only"},
+		{"[trivial-assertion]", "test_trivial_true"},
+	} {
+		if !strings.Contains(stdout, expect.rule) {
+			t.Errorf("expected %s in output.\nOutput:\n%s", expect.rule, stdout)
+		}
+		if !strings.Contains(stdout, expect.testName) {
+			t.Errorf("expected %s in output", expect.testName)
+		}
+	}
+}
+
+func TestE2E_Rust_CleanTestsNotFlagged(t *testing.T) {
+	stdout, _, _ := runUTVet(t, "--severity", "p2", rustFixtureDir(t))
+
+	for _, clean := range []string{"test_good_assertion", "test_good_assert", "test_meaningful_inputs", "test_should_panic"} {
+		if strings.Contains(stdout, clean) {
+			t.Errorf("%s should NOT appear — it is a valid test.\nOutput:\n%s", clean, stdout)
+		}
+	}
+}
+
+func TestE2E_Rust_P2RulesDetected(t *testing.T) {
+	stdout, _, exitCode := runUTVet(t, "--severity", "p2", rustFixtureDir(t))
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+
+	if !strings.Contains(stdout, "[tautological-assert]") {
+		t.Errorf("expected [tautological-assert] in output.\nOutput:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "test_tautological") {
+		t.Error("expected test_tautological in output")
+	}
+}
+
+func TestE2E_Rust_JSONOutput(t *testing.T) {
+	stdout, _, exitCode := runUTVet(t, "--format", "json", rustFixtureDir(t))
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+
+	var result struct {
+		Findings []struct {
+			File string `json:"file"`
+			Rule string `json:"rule"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nOutput:\n%s", err, stdout)
+	}
+	if len(result.Findings) == 0 {
+		t.Error("expected at least one finding in JSON output")
+	}
+	// Verify a Rust file is in findings
+	hasRust := false
+	for _, f := range result.Findings {
+		if strings.HasSuffix(f.File, ".rs") {
+			hasRust = true
+			break
+		}
+	}
+	if !hasRust {
+		t.Error("expected at least one finding from a .rs file")
+	}
+}
+
+func TestE2E_Rust_MixedGoAndRust(t *testing.T) {
+	// Run ut-vet on both Go and Rust fixture dirs at once
+	stdout, _, exitCode := runUTVet(t, fixtureDir(t), rustFixtureDir(t))
+	if exitCode != 1 {
+		t.Errorf("expected exit code 1, got %d", exitCode)
+	}
+
+	// Should have findings from both Go and Rust
+	hasGo := strings.Contains(stdout, ".go:")
+	hasRust := strings.Contains(stdout, ".rs:")
+	if !hasGo {
+		t.Errorf("expected Go findings.\nOutput:\n%s", stdout)
+	}
+	if !hasRust {
+		t.Errorf("expected Rust findings.\nOutput:\n%s", stdout)
+	}
+}

@@ -73,6 +73,21 @@ func (r *LogOnlyRule) Analyze(ctx *AnalysisContext) []Finding {
 	return nil
 }
 
+// Rust log/print macros
+var rustLogFunctions = map[string]bool{
+	"println!":  true,
+	"print!":    true,
+	"eprintln!": true,
+	"eprint!":   true,
+	"dbg!":      true,
+	"log!":      true,
+	"info!":     true,
+	"debug!":    true,
+	"warn!":     true,
+	"error!":    true,
+	"trace!":    true,
+}
+
 func isLogCall(call CallExpr) bool {
 	receiver := call.Receiver
 	// For t.Log/t.Logf, use "t" as the receiver key
@@ -81,6 +96,10 @@ func isLogCall(call CallExpr) bool {
 	}
 	if funcs, ok := logFunctions[receiver]; ok {
 		return funcs[call.Function]
+	}
+	// Rust log macros
+	if rustLogFunctions[call.Function] {
+		return true
 	}
 	return false
 }

@@ -81,6 +81,10 @@ func (a *Analyzer) analyzePath(path string) ([]rules.Finding, error) {
 		return a.analyzeGoFile(path)
 	}
 
+	if isRustTestFile(path) {
+		return a.analyzeRustFile(path)
+	}
+
 	return nil, nil
 }
 
@@ -100,7 +104,7 @@ func (a *Analyzer) analyzeDir(dir string) ([]rules.Finding, error) {
 			return nil
 		}
 
-		if !isGoTestFile(path) {
+		if !isGoTestFile(path) && !isRustTestFile(path) {
 			return nil
 		}
 
@@ -108,9 +112,9 @@ func (a *Analyzer) analyzeDir(dir string) ([]rules.Finding, error) {
 			return nil
 		}
 
-		findings, err := a.analyzeGoFile(path)
-		if err != nil {
-			return fmt.Errorf("analyzing %s: %w", path, err)
+		findings, findErr := a.analyzeFile(path)
+		if findErr != nil {
+			return fmt.Errorf("analyzing %s: %w", path, findErr)
 		}
 		allFindings = append(allFindings, findings...)
 		return nil
@@ -130,6 +134,34 @@ func (a *Analyzer) analyzeGoFile(path string) ([]rules.Finding, error) {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
 
+	return a.runRules(path, testFuncs), nil
+}
+
+func (a *Analyzer) analyzeRustFile(path string) ([]rules.Finding, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	testFuncs, err := ParseRustTestFile(path, src)
+	if err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+
+	return a.runRules(path, testFuncs), nil
+}
+
+func (a *Analyzer) analyzeFile(path string) ([]rules.Finding, error) {
+	if isGoTestFile(path) {
+		return a.analyzeGoFile(path)
+	}
+	if isRustTestFile(path) {
+		return a.analyzeRustFile(path)
+	}
+	return nil, nil
+}
+
+func (a *Analyzer) runRules(path string, testFuncs []*rules.TestFunc) []rules.Finding {
 	var findings []rules.Finding
 	for _, tf := range testFuncs {
 		ctx := &rules.AnalysisContext{
@@ -140,8 +172,7 @@ func (a *Analyzer) analyzeGoFile(path string) ([]rules.Finding, error) {
 			findings = append(findings, rule.Analyze(ctx)...)
 		}
 	}
-
-	return findings, nil
+	return findings
 }
 
 func (a *Analyzer) isExcluded(path string) bool {

@@ -16,7 +16,7 @@ func (r *TrivialAssertRule) Analyze(ctx *AnalysisContext) []Finding {
 	var findings []Finding
 
 	for _, call := range tf.CallExprs {
-		if !isTestifyAssertionCall(call) {
+		if !isTestifyAssertionCall(call) && !isRustAssertMacro(call) {
 			continue
 		}
 
@@ -44,29 +44,40 @@ func (r *TrivialAssertRule) checkTrivial(call CallExpr) bool {
 
 	switch call.Function {
 	case "True":
-		// assert.True(t, true) — trivial
 		return len(args) >= 1 && args[0].IsLiteral && args[0].Value == "true"
 
 	case "False":
-		// assert.False(t, false) — trivial
 		return len(args) >= 1 && args[0].IsLiteral && (args[0].Value == "false")
 
 	case "Nil":
-		// assert.Nil(t, nil) — trivial
 		return len(args) >= 1 && args[0].IsNil
 
 	case "NotNil":
-		// assert.NotNil(t, <literal>) — trivial if literal is non-nil
 		return len(args) >= 1 && args[0].IsLiteral && !args[0].IsNil
 
 	case "Equal", "Exactly":
-		// assert.Equal(t, X, X) — trivial if both args are identical literals
 		if len(args) >= 2 {
 			return args[0].IsLiteral && args[1].IsLiteral && args[0].Value == args[1].Value
 		}
 
 	case "NotEqual":
-		// assert.NotEqual(t, 1, 2) with both literals — trivially true
+		if len(args) >= 2 {
+			return args[0].IsLiteral && args[1].IsLiteral
+		}
+
+	// Rust macros
+	case "assert!":
+		// assert!(true) — trivial
+		return len(args) >= 1 && args[0].IsLiteral && args[0].Value == "true"
+
+	case "assert_eq!":
+		// assert_eq!(1, 1) — trivial if both are identical literals
+		if len(args) >= 2 {
+			return args[0].IsLiteral && args[1].IsLiteral && args[0].Value == args[1].Value
+		}
+
+	case "assert_ne!":
+		// assert_ne!(1, 2) with both literals — trivially true
 		if len(args) >= 2 {
 			return args[0].IsLiteral && args[1].IsLiteral
 		}
@@ -77,6 +88,14 @@ func (r *TrivialAssertRule) checkTrivial(call CallExpr) bool {
 
 func isTestifyAssertionCall(call CallExpr) bool {
 	return call.Receiver == "assert" || call.Receiver == "require"
+}
+
+func isRustAssertMacro(call CallExpr) bool {
+	switch call.Function {
+	case "assert!", "assert_eq!", "assert_ne!", "debug_assert!", "debug_assert_eq!", "debug_assert_ne!":
+		return true
+	}
+	return false
 }
 
 func formatCall(call CallExpr) string {

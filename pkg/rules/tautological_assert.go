@@ -16,19 +16,18 @@ func (r *TautologicalAssertRule) Analyze(ctx *AnalysisContext) []Finding {
 	var findings []Finding
 
 	for _, call := range tf.CallExprs {
-		if !isTestifyAssertionCall(call) {
+		if !isTestifyAssertionCall(call) && !isRustAssertMacro(call) {
 			continue
 		}
 
-		// Skip the t parameter
+		// Skip the t parameter for Go testify calls
 		args := call.Args
 		if len(args) > 0 && args[0].IsVariable && args[0].VarName == "t" {
 			args = args[1:]
 		}
 
 		switch call.Function {
-		case "Equal", "Exactly", "Same":
-			// Check if both comparison args are the same variable
+		case "Equal", "Exactly", "Same", "assert_eq!":
 			if len(args) >= 2 && args[0].IsVariable && args[1].IsVariable && args[0].VarName == args[1].VarName {
 				findings = append(findings, Finding{
 					File:     ctx.File,

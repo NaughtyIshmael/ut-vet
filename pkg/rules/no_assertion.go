@@ -51,14 +51,28 @@ func (r *NoAssertionRule) Analyze(ctx *AnalysisContext) []Finding {
 	}
 }
 
+// Rust assertion macros
+var rustAssertionMacros = map[string]bool{
+	"assert!":          true,
+	"assert_eq!":       true,
+	"assert_ne!":       true,
+	"debug_assert!":    true,
+	"debug_assert_eq!": true,
+	"debug_assert_ne!": true,
+}
+
 // IsAssertionCall returns true if the call expression is an assertion.
 func IsAssertionCall(call CallExpr) bool {
-	// testing.T assertion methods
+	// testing.T assertion methods (Go)
 	if call.IsTestingT && assertionFunctions[call.Function] {
 		return true
 	}
-	// testify and similar assertion packages
+	// testify and similar assertion packages (Go)
 	if assertionReceivers[call.Receiver] {
+		return true
+	}
+	// Rust assertion macros
+	if rustAssertionMacros[call.Function] {
 		return true
 	}
 	return false
