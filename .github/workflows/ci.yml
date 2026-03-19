@@ -38,6 +38,9 @@ jobs:
       - name: E2E tests
         run: make test-e2e
 
+      - name: Install gremlins
+        run: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+
       - name: Mutation tests
         continue-on-error: true
         run: make mutate
