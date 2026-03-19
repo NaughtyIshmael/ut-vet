@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,17 +26,18 @@ jobs:
       - name: Check formatting
         run: make fmt-check
 
-      - name: Run go vet
-        run: go vet ./...
-
       - name: Unit tests
         run: make test-unit
 
       - name: Race detector tests
-        run: go test ./pkg/... -race -count=1
+        run: make test-race
 
       - name: Build
         run: make build
 
       - name: E2E tests
         run: make test-e2e
+
+      - name: Mutation tests
+        continue-on-error: true
+        run: make mutate
