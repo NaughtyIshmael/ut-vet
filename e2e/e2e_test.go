@@ -16,7 +16,7 @@ func binaryPath(t *testing.T) string {
 	t.Helper()
 	bin := os.Getenv("UT_VET_BIN")
 	if bin == "" {
-		t.Fatal("UT_VET_BIN env var not set — run 'make build' first or set UT_VET_BIN")
+		t.Skip("UT_VET_BIN env var not set — run 'make build' first or set UT_VET_BIN")
 	}
 	if _, err := os.Stat(bin); err != nil {
 		t.Fatalf("ut-vet binary not found at %s: %v", bin, err)
@@ -564,5 +564,42 @@ func TestE2E_Rust_MixedGoAndRust(t *testing.T) {
 	}
 	if !hasRust {
 		t.Errorf("expected Rust findings.\nOutput:\n%s", stdout)
+	}
+}
+
+// --- Mutate subcommand E2E Tests ---
+
+func TestE2E_Mutate_ToolNotInstalled(t *testing.T) {
+	_, stderr, exitCode := runUTVet(t, "mutate", "--tool", "gremlins", ".")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2 (tool error), got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "not found in PATH") {
+		t.Errorf("expected 'not found in PATH' in stderr.\nStderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "Install:") {
+		t.Errorf("expected install instructions in stderr.\nStderr:\n%s", stderr)
+	}
+}
+
+func TestE2E_Mutate_InvalidTool(t *testing.T) {
+	_, stderr, exitCode := runUTVet(t, "mutate", "--tool", "nonexistent", ".")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2, got %d", exitCode)
+	}
+	if !strings.Contains(stderr, "not found") {
+		t.Errorf("expected error message in stderr.\nStderr:\n%s", stderr)
+	}
+}
+
+func TestE2E_Mutate_AutoDetectGo(t *testing.T) {
+	// Running in ut-vet project root (has go.mod) should auto-detect gremlins
+	_, stderr, exitCode := runUTVet(t, "mutate", ".")
+	if exitCode != 2 {
+		t.Errorf("expected exit code 2 (gremlins not installed), got %d", exitCode)
+	}
+	// Should detect Go project and try gremlins
+	if !strings.Contains(stderr, "gremlins") {
+		t.Errorf("expected gremlins in error.\nStderr:\n%s", stderr)
 	}
 }

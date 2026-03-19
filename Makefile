@@ -48,3 +48,8 @@ install:
 # Show available rules
 rules: build
 	./bin/ut-vet --list-rules
+
+# Run mutation testing (requires gremlins for Go or cargo-mutants for Rust)
+mutate: build
+	@echo "Running mutation testing..."
+	./bin/ut-vet mutate -v .

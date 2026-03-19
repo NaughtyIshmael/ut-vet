@@ -56,6 +56,29 @@ ut-vet --format json ./...
 | `tautological-assert` | Assert variable equals itself (`assert_eq!(x, x)`) |
 | `dead-assertion` | Assertion after `t.Fatal`/`return`/`panic!` (unreachable) |
 | `no-arrange` | No meaningful setup — all args are nil/zero |
+| `happy-path-only` | Only tests success path of a fallible function |
+
+## Mutation Testing
+
+Static analysis catches structurally weak tests, but can't tell if tests actually catch code logic errors. Use `ut-vet mutate` to run mutation testing — it injects small code changes and checks if your tests detect them.
+
+```bash
+# Run mutation testing (auto-detects Go/Rust)
+ut-vet mutate .
+
+# With minimum score threshold (fail CI if below 80%)
+ut-vet mutate --threshold 0.8 .
+
+# JSON output
+ut-vet mutate --json .
+
+# Verbose (show all mutants, including killed)
+ut-vet mutate -v .
+```
+
+**Prerequisites:**
+- **Go**: Install [gremlins](https://github.com/go-gremlins/gremlins): `go install github.com/go-gremlins/gremlins/cmd/gremlins@latest`
+- **Rust**: Install [cargo-mutants](https://github.com/sourcefrog/cargo-mutants): `cargo install --locked cargo-mutants`
 
 ## Usage
 
@@ -71,6 +94,9 @@ Flags:
   --version              Show version
   -v                     Verbose output
   -q                     Quiet mode (findings only)
+
+Subcommands:
+  mutate [flags] [path]  Run mutation testing via gremlins (Go) or cargo-mutants (Rust)
 ```
 
 ## Example Output
