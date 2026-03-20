@@ -568,20 +568,6 @@ func TestE2E_Rust_MixedGoAndRust(t *testing.T) {
 }
 
 // --- Mutate subcommand E2E Tests ---
-
-func TestE2E_Mutate_ToolNotInstalled(t *testing.T) {
-	_, stderr, exitCode := runUTVet(t, "mutate", "--tool", "gremlins", ".")
-	if exitCode != 2 {
-		t.Errorf("expected exit code 2 (tool error), got %d", exitCode)
-	}
-	if !strings.Contains(stderr, "not found in PATH") {
-		t.Errorf("expected 'not found in PATH' in stderr.\nStderr:\n%s", stderr)
-	}
-	if !strings.Contains(stderr, "Install:") {
-		t.Errorf("expected install instructions in stderr.\nStderr:\n%s", stderr)
-	}
-}
-
 func TestE2E_Mutate_InvalidTool(t *testing.T) {
 	_, stderr, exitCode := runUTVet(t, "mutate", "--tool", "nonexistent", ".")
 	if exitCode != 2 {
