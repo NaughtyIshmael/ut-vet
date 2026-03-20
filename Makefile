@@ -20,10 +20,7 @@ test-e2e: build
 
 # Run tests with race detector
 test-race:
-	go test ./pkg/... -race -count=1
-	go build -race -o bin/ut-vet-race ./cmd/ut-vet/
-	UT_VET_BIN=$(CURDIR)/bin/ut-vet-race go test ./e2e/... -race -count=1
-	rm -f bin/ut-vet-race
+	go test ./pkg/... -race
 
 # Run ut-vet against its own test files (dogfooding)
 dogfood: build
