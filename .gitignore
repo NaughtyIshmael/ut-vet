@@ -1,6 +1,5 @@
 # Build artifacts
 bin/
-ut-vet
 
 # Go
 *.exe
