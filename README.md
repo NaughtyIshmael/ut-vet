@@ -113,17 +113,85 @@ src/parser.rs:45: [trivial-assertion] test_parse asserts a constant expression: 
 src/parser.rs:52: [tautological-assert] test_roundtrip compares result to itself: assert_eq!(result, result)
 ```
 
-## CI Integration
+## GitHub Action
 
-`ut-vet` exits with code 1 when issues are found, making it easy to use as a CI gate:
+Use ut-vet as a reusable GitHub Action in any project — no manual install needed:
 
 ```yaml
-# GitHub Actions
+- uses: NaughtyIshmael/ut-vet@main
+  with:
+    paths: './...'
+    severity: 'p0'
+```
+
+Findings appear as inline PR annotations automatically.
+
+### Action Inputs
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `paths` | `.` | Space-separated paths to analyze |
+| `mode` | `analyze` | `analyze` (static analysis) or `mutate` (mutation testing) |
+| `severity` | `p0` | Minimum severity: `p0`, `p1`, or `p2` |
+| `format` | `text` | Output format: `text` or `json` |
+| `rules` | (all) | Comma-separated rule IDs to enable |
+| `exclude` | (none) | Comma-separated glob patterns to exclude files |
+| `verbose` | `false` | Enable verbose output |
+| `quiet` | `false` | Quiet mode — findings only |
+| `version` | `latest` | ut-vet version (e.g. `v1.0.0` or `latest`) |
+| `mutation-tool` | (auto) | `gremlins` (Go) or `cargo-mutants` (Rust) |
+| `mutation-threshold` | (none) | Minimum mutation score (0.0–1.0) |
+
+### Action Outputs
+
+| Output | Description |
+|--------|-------------|
+| `exit-code` | `0` = clean, `1` = findings detected, `2` = error |
+
+### Examples
+
+```yaml
+# Basic — P0 checks on all test files
+- uses: NaughtyIshmael/ut-vet@main
+  with:
+    paths: './...'
+
+# Strict — all severity levels, specific rules
+- uses: NaughtyIshmael/ut-vet@main
+  with:
+    severity: 'p2'
+    rules: 'empty-test,no-assertion,trivial-assertion'
+    paths: './pkg/...'
+
+# JSON output, excluding generated files
+- uses: NaughtyIshmael/ut-vet@main
+  with:
+    format: 'json'
+    exclude: '*_generated_test.go,*_mock_test.go'
+    paths: './...'
+
+# Mutation testing with a score threshold
+- uses: NaughtyIshmael/ut-vet@main
+  with:
+    mode: 'mutate'
+    mutation-threshold: '0.8'
+    paths: '.'
+```
+
+> **Note:** The action requires Go to be set up in your workflow (e.g. via `actions/setup-go`).
+
+## CI Integration (Manual)
+
+If you prefer to install ut-vet directly instead of using the Action:
+
+```yaml
 - name: Vet unit tests
   run: |
     go install github.com/NaughtyIshmael/ut-vet/cmd/ut-vet@latest
     ut-vet ./...
 ```
+
+`ut-vet` exits with code 1 when issues are found, making it easy to use as a CI gate.
 
 ## Language Support
 

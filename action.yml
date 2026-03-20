@@ -1,0 +1,136 @@
+name: 'ut-vet'
+description: 'Catch meaningless unit tests before they waste your CI. Static analysis for Go and Rust test files.'
+author: 'NaughtyIshmael'
+
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  paths:
+    description: 'Space-separated paths to analyze'
+    required: false
+    default: '.'
+  mode:
+    description: 'Analysis mode: "analyze" (static analysis) or "mutate" (mutation testing)'
+    required: false
+    default: 'analyze'
+  severity:
+    description: 'Minimum severity to report: p0, p1, or p2'
+    required: false
+    default: 'p0'
+  format:
+    description: 'Output format: text or json'
+    required: false
+    default: 'text'
+  rules:
+    description: 'Comma-separated rule IDs to enable (default: all)'
+    required: false
+    default: ''
+  exclude:
+    description: 'Comma-separated glob patterns to exclude files'
+    required: false
+    default: ''
+  verbose:
+    description: 'Enable verbose output'
+    required: false
+    default: 'false'
+  quiet:
+    description: 'Quiet mode — findings only'
+    required: false
+    default: 'false'
+  version:
+    description: 'ut-vet version to install (e.g. "v1.0.0" or "latest")'
+    required: false
+    default: 'latest'
+  mutation-tool:
+    description: 'Mutation tool: "gremlins" (Go) or "cargo-mutants" (Rust). Auto-detected if omitted.'
+    required: false
+    default: ''
+  mutation-threshold:
+    description: 'Minimum mutation score (0.0-1.0). Fails if score is below this.'
+    required: false
+    default: ''
+
+outputs:
+  exit-code:
+    description: 'Exit code from ut-vet (0=clean, 1=findings, 2=error)'
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install ut-vet
+      shell: bash
+      run: |
+        GOBIN="${GOPATH:-$HOME/go}/bin"
+        mkdir -p "$GOBIN"
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          # Build from the action source — ensures the binary matches the action ref
+          cd "${{ github.action_path }}"
+          go build -o "$GOBIN/ut-vet" ./cmd/ut-vet/
+        else
+          go install github.com/NaughtyIshmael/ut-vet/cmd/ut-vet@${{ inputs.version }}
+        fi
+
+    - name: Register problem matcher
+      shell: bash
+      if: inputs.mode == 'analyze' && inputs.format == 'text'
+      run: echo "::add-matcher::${{ github.action_path }}/matchers/ut-vet.json"
+
+    - name: Run ut-vet
+      id: run
+      shell: bash
+      run: |
+        set +e
+
+        ARGS=()
+
+        if [ "${{ inputs.mode }}" = "mutate" ]; then
+          ARGS+=("mutate")
+
+          if [ -n "${{ inputs.mutation-tool }}" ]; then
+            ARGS+=("--tool" "${{ inputs.mutation-tool }}")
+          fi
+          if [ -n "${{ inputs.mutation-threshold }}" ]; then
+            ARGS+=("--threshold" "${{ inputs.mutation-threshold }}")
+          fi
+          if [ "${{ inputs.verbose }}" = "true" ]; then
+            ARGS+=("-v")
+          fi
+          if [ "${{ inputs.format }}" = "json" ]; then
+            ARGS+=("--json")
+          fi
+
+          ARGS+=(${{ inputs.paths }})
+        else
+          ARGS+=("--format" "${{ inputs.format }}")
+          ARGS+=("--severity" "${{ inputs.severity }}")
+
+          if [ -n "${{ inputs.rules }}" ]; then
+            ARGS+=("--rules" "${{ inputs.rules }}")
+          fi
+          if [ -n "${{ inputs.exclude }}" ]; then
+            ARGS+=("--exclude" "${{ inputs.exclude }}")
+          fi
+          if [ "${{ inputs.verbose }}" = "true" ]; then
+            ARGS+=("-v")
+          fi
+          if [ "${{ inputs.quiet }}" = "true" ]; then
+            ARGS+=("-q")
+          fi
+
+          ARGS+=(${{ inputs.paths }})
+        fi
+
+        echo "Running: ut-vet ${ARGS[*]}"
+        ut-vet "${ARGS[@]}"
+        EXIT_CODE=$?
+
+        echo "exit-code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+        exit $EXIT_CODE
+
+    - name: Remove problem matcher
+      shell: bash
+      if: always() && inputs.mode == 'analyze' && inputs.format == 'text'
+      run: echo "::remove-matcher owner=ut-vet::"
