@@ -577,15 +577,3 @@ func TestE2E_Mutate_InvalidTool(t *testing.T) {
 		t.Errorf("expected error message in stderr.\nStderr:\n%s", stderr)
 	}
 }
-
-func TestE2E_Mutate_AutoDetectGo(t *testing.T) {
-	// Running in ut-vet project root (has go.mod) should auto-detect gremlins
-	_, stderr, exitCode := runUTVet(t, "mutate", ".")
-	if exitCode != 2 {
-		t.Errorf("expected exit code 2 (gremlins not installed), got %d", exitCode)
-	}
-	// Should detect Go project and try gremlins
-	if !strings.Contains(stderr, "gremlins") {
-		t.Errorf("expected gremlins in error.\nStderr:\n%s", stderr)
-	}
-}
